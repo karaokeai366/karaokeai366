@@ -301,6 +301,38 @@ function SearchResults({
   );
 }
 
+function selectNextQueueEntry(
+  session: SessionState,
+  currentOwnerParticipantId?: string
+): QueueEntry | null {
+  const candidates = session.queue.filter((entry) => {
+    if (entry.status !== 'ready') return false;
+
+    if (session.roundMode.kind !== 'songs') return true;
+
+    const result = session.roundResultsByParticipant?.[entry.ownerParticipantId];
+    return !(result?.roundId === session.roundId && result.finished);
+  });
+
+  if (candidates.length === 0) return null;
+
+  const completedSongs = (participantId: string) => {
+    const result = session.roundResultsByParticipant?.[participantId];
+    return result?.roundId === session.roundId ? result.completedSongs : 0;
+  };
+
+  const minCompleted = Math.min(...candidates.map((entry) => completedSongs(entry.ownerParticipantId)));
+  const fairest = candidates.filter(
+    (entry) => completedSongs(entry.ownerParticipantId) === minCompleted
+  );
+
+  const differentSinger = fairest.find(
+    (entry) => entry.ownerParticipantId !== currentOwnerParticipantId
+  );
+
+  return differentSinger ?? fairest[0] ?? candidates[0];
+}
+
 function playbackElapsedSeconds(entry: QueueEntry | null | undefined): number {
   if (!entry) return 0;
   if (entry.playbackState === 'paused') {
@@ -1087,6 +1119,10 @@ function TvStage({
   const owner = playing
     ? session.participants.find((participant) => participant.id === playing.ownerParticipantId)
     : null;
+  const nextEntry = selectNextQueueEntry(session, playing?.ownerParticipantId);
+  const nextOwner = nextEntry
+    ? session.participants.find((participant) => participant.id === nextEntry.ownerParticipantId)
+    : null;
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [manifest, setManifest] = useState<import('../../../packages/media/src/song').SongAssetManifest | null>(null);
@@ -1576,6 +1612,13 @@ function TvStage({
 
         <aside className="tv-queue">
           <div className="tv-queue-heading"><span className="eyebrow">FILA</span><strong>{upcoming.length}</strong></div>
+          {nextEntry && (
+            <div className="tv-next-singer">
+              <span className="eyebrow">PRÓXIMO CANTOR</span>
+              <strong>🎙️ {nextOwner?.name ?? 'Participante'}</strong>
+              <span>{nextEntry.title}</span>
+            </div>
+          )}
           {upcoming.slice(0, 6).map((entry, index) => (
             <div className={`tv-queue-row ${entry.status === 'playing' ? 'active' : ''}`} key={entry.id}>
               <span>{index + 1}</span>
