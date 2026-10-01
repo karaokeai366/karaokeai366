@@ -1,4 +1,4 @@
-import type { SongSearchResult } from '../../../packages/media/src/song';
+import type { SongAssetManifest, SongSearchResult } from '../../../packages/media/src/song';
 
 const MEDIA_WORKER_URL =
   (import.meta.env.VITE_MEDIA_WORKER_URL as string | undefined) ??
@@ -47,16 +47,24 @@ export async function searchSongs(query: string): Promise<SongSearchResult[]> {
 }
 
 
-export interface MediaDownloadResponse {
-  asset_id: string;
-  original_file: string;
-  duration_seconds?: number | null;
+export interface MediaPrepareResponse extends SongAssetManifest {
+  manifestUrl?: string;
 }
 
-export async function prepareSong(sourceUrl: string, mediaKind: 'audio' | 'video' = 'video') {
-  return request<MediaDownloadResponse>('/download', {
+export async function prepareSong(source: SongSearchResult, mediaKind: 'audio' | 'video' = 'video') {
+  return request<MediaPrepareResponse>('/prepare', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ source_url: sourceUrl, media_kind: mediaKind })
+    body: JSON.stringify({
+      source_url: source.sourceUrl,
+      media_kind: mediaKind,
+      source_id: source.sourceId,
+      source: source.source,
+      title: source.title,
+      artist: source.artist,
+      album: source.album,
+      channel_name: source.channelName,
+      thumbnail_url: source.thumbnailUrl
+    })
   });
 }
