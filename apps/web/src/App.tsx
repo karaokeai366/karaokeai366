@@ -9,6 +9,8 @@ import {
   getLocalSession
 } from './session';
 import { WebSocketTransport } from './wsTransport';
+import { searchSongs } from './mediaClient';
+import type { SongSearchResult } from '../../../packages/media/src/song';
 
 type View = 'home' | 'host' | 'join' | 'participant';
 
@@ -86,6 +88,9 @@ export function App() {
   const [transport, setTransport] = useState<WebSocketTransport | null>(null);
   const [songTitle, setSongTitle] = useState('');
   const [songArtist, setSongArtist] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SongSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
   const [roundCount, setRoundCount] = useState('1');
   const [roundOpen, setRoundOpen] = useState(false);
 
@@ -209,6 +214,42 @@ export function App() {
   async function reconnectStoredHost() {
     if (!session || session.hostParticipantId !== currentParticipantId) return;
     await connectAsHost(session);
+  }
+
+  async function searchMusic() {
+    const query = searchQuery.trim();
+    if (query.length < 2) {
+      setError('Digite pelo menos 2 caracteres para pesquisar.');
+      return;
+    }
+
+    setSearching(true);
+    setError('');
+    try {
+      setSearchResults(await searchSongs(query));
+      if (searchResults.length === 0) setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível pesquisar músicas.');
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  function addSearchResultToQueue(result: SongSearchResult) {
+    if (!session || !transport || !currentParticipantId) return;
+
+    try {
+      transport.sendRaw('queue.add', session.sessionId, currentParticipantId, {
+        title: result.title,
+        artist: result.artist,
+        sourceId: result.sourceId,
+        source: result.source,
+        sourceUrl: result.sourceUrl
+      });
+      setSearchResults((items) => items.filter((item) => item.sourceId !== result.sourceId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível adicionar a música.');
+    }
   }
 
   async function addSongToQueue() {
@@ -403,11 +444,38 @@ export function App() {
               <span className="tag">TESTE DO MVP</span>
             </div>
             <p className="muted">Por enquanto o título é digitado manualmente. A busca em fontes de música e o pré-processamento entram no próximo módulo.</p>
-            <div className="song-form">
-              <input value={songTitle} onChange={(e) => setSongTitle(e.target.value)} placeholder="Nome da música" maxLength={160} />
-              <input value={songArtist} onChange={(e) => setSongArtist(e.target.value)} placeholder="Artista (opcional)" maxLength={120} />
-              <button className="primary" onClick={addSongToQueue}>Adicionar à fila</button>
+            <div className="search-box">
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="🔎 Pesquisar música e artista"
+                maxLength={160}
+                onKeyDown={(e) => e.key === 'Enter' && searchMusic()}
+              />
+              <button className="primary" onClick={searchMusic} disabled={searching}>{searching ? 'Pesquisando…' : 'Pesquisar'}</button>
             </div>
+            {searchResults.length > 0 && (
+              <div className="search-results">
+                {searchResults.map((result) => (
+                  <div className="search-result" key={result.sourceId}>
+                    <div className="result-thumb">{result.thumbnailUrl ? <img src={result.thumbnailUrl} alt="" loading="lazy" /> : '🎵'}</div>
+                    <div className="result-info">
+                      <strong>{result.title}</strong>
+                      <small>{result.artist ?? 'Artista não identificado'}{result.durationSeconds ? ` · ${Math.round(result.durationSeconds / 60)} min` : ''}</small>
+                    </div>
+                    <button className="secondary add-result" onClick={() => addSearchResultToQueue(result)}>+ Fila</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <details className="manual-add">
+              <summary>Adicionar manualmente</summary>
+              <div className="song-form">
+                <input value={songTitle} onChange={(e) => setSongTitle(e.target.value)} placeholder="Nome da música" maxLength={160} />
+                <input value={songArtist} onChange={(e) => setSongArtist(e.target.value)} placeholder="Artista (opcional)" maxLength={120} />
+                <button className="primary" onClick={addSongToQueue}>Adicionar</button>
+              </div>
+            </details>
             <QueueList session={session!} currentParticipantId={currentParticipantId} onRemove={removeQueueEntry} />
           </div>
 
