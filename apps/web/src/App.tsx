@@ -578,7 +578,22 @@ function SingerMicrophone({
       if (currentEntry?.status === 'completed') {
         finishPerformance();
       }
-      stop();
+
+      const continuingForSameSinger =
+        Boolean(playing)
+        && playing.id !== previousId
+        && playing.ownerParticipantId === participantId;
+
+      if (!continuingForSameSinger) {
+        stop();
+      } else {
+        pitchSamplesRef.current = [];
+        referenceNotesRef.current = [];
+        performanceRef.current = null;
+        toneSuggestionCheckedRef.current = false;
+        setToneSuggestion(null);
+        setShowManualTone(false);
+      }
     }
 
     if (previousId && previousId !== playing?.id) {
