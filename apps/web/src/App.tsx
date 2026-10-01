@@ -301,6 +301,25 @@ function SearchResults({
   );
 }
 
+function playbackElapsedSeconds(entry: QueueEntry | null | undefined): number {
+  if (!entry) return 0;
+  if (entry.playbackState === 'paused') {
+    return Math.max(0, Number(entry.playbackPositionSeconds ?? 0));
+  }
+  if (Number.isFinite(entry.playbackPositionSeconds) && !entry.playbackStartedAt) {
+    return Math.max(0, Number(entry.playbackPositionSeconds));
+  }
+  if (Number.isFinite(entry.playbackStartedAt)) {
+    return Math.max(
+      0,
+      Number(entry.playbackPositionSeconds ?? 0)
+        + (Date.now() - Number(entry.playbackStartedAt)) / 1000
+        - (Number(entry.playbackPositionSeconds ?? 0) > 0 ? Number(entry.playbackPositionSeconds) : 0)
+    );
+  }
+  return 0;
+}
+
 function dispatchWebRtcSignal(
   transport: WebSocketTransport,
   session: SessionState,
@@ -460,6 +479,9 @@ function SingerMicrophone({
   const toneWindowRef = useRef<{ start: number; end: number }>({ start: 15, end: 90 });
   const performanceStartRef = useRef<number | null>(null);
   const previousPlaybackStartedAtRef = useRef<number | null>(null);
+  const currentPlayingRef = useRef<QueueEntry | null>(playing);
+
+  currentPlayingRef.current = playing;
 
   const [active, setActive] = useState(false);
   const [error, setError] = useState('');
@@ -753,7 +775,13 @@ function SingerMicrophone({
           const detection = estimatePitch(buffer, analysisContext.sampleRate);
 
           if (detection) {
-            const elapsedSeconds = Math.max(0, (Date.now() - startedAt) / 1000);
+            const currentPlayback = currentPlayingRef.current;
+            if (!currentPlayback || currentPlayback.playbackState === 'paused') {
+              analysisFrameRef.current = window.requestAnimationFrame(sampleLoop);
+              return;
+            }
+
+            const elapsedSeconds = playbackElapsedSeconds(currentPlayback);
 
             pushPitchSample(
               pitchSamplesRef.current,
@@ -856,7 +884,7 @@ function SingerMicrophone({
           100,
           Math.max(
             0,
-            ((Date.now() - playing.playbackStartedAt!) / 1000 / playing.durationSeconds!) * 100
+            (playbackElapsedSeconds(playing) / playing.durationSeconds!) * 100
           )
         )
       );
@@ -2063,6 +2091,20 @@ export function App() {
     if (current) setQueueStatus(current.id, 'completed');
   }
 
+  function controlPlayback(action: 'pause' | 'resume' | 'skip' | 'end') {
+    if (!session || !transport || session.hostParticipantId !== currentParticipantId) return;
+
+    const current = session.queue.find((entry) => entry.status === 'playing');
+    if (action !== 'end' && !current) return;
+
+    if (action === 'end' && !window.confirm('Encerrar a apresentação agora?')) return;
+
+    transport.sendRaw('playback.control', session.sessionId, currentParticipantId, {
+      action,
+      ...(current ? { queueEntryId: current.id } : {})
+    });
+  }
+
   function configureRound() {
     if (!session || !transport || !currentParticipantId) return;
 
@@ -2247,6 +2289,56 @@ export function App() {
             <div className="stat-card"><span>Rodada</span><strong>{session?.roundMode.kind === 'open' ? '∞' : session?.roundMode.songCount ?? 1}</strong></div>
           </div>
           {session && <RoundProgress session={session} participantId={currentParticipantId} />}
+          {session && (
+            <div className="panel stage-control-panel">
+              <div className="panel-heading">
+                <div>
+                  <span className="eyebrow">🎛️ CONTROLE DO PALCO</span>
+                  <h3>Apresentação</h3>
+                </div>
+                <span className="tag">
+                  {session.status === 'finished'
+                    ? 'ENCERRADA'
+                    : session.queue.some((entry) => entry.status === 'playing')
+                      ? (session.queue.find((entry) => entry.status === 'playing')?.playbackState === 'paused' ? 'PAUSADA' : 'AO VIVO')
+                      : 'AGUARDANDO'}
+                </span>
+              </div>
+              <div className="stage-control-actions">
+                {session.queue.some((entry) => entry.status === 'playing') ? (
+                  <>
+                    {session.queue.find((entry) => entry.status === 'playing')?.playbackState === 'paused' ? (
+                      <button className="primary" type="button" onClick={() => controlPlayback('resume')}>
+                        ▶ Retomar
+                      </button>
+                    ) : (
+                      <button className="secondary" type="button" onClick={() => controlPlayback('pause')}>
+                        ⏸ Pausar
+                      </button>
+                    )}
+                    <button className="secondary danger-button" type="button" onClick={() => controlPlayback('skip')}>
+                      ⏭ Pular
+                    </button>
+                    <button className="secondary danger-button" type="button" onClick={() => controlPlayback('end')}>
+                      🛑 Encerrar
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    className="primary"
+                    type="button"
+                    disabled={session.status === 'finished'}
+                    onClick={() => startNextSong()}
+                  >
+                    ▶ Iniciar próxima música
+                  </button>
+                )}
+              </div>
+              <p className="muted small-note">
+                Pausar preserva a posição. Pular cancela a tentativa sem gerar nota. Encerrar fecha a apresentação atual.
+              </p>
+            </div>
+          )}
           {session && (
             <div className="panel auto-advance-panel">
               <div>
