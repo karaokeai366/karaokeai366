@@ -32,3 +32,15 @@ jobs:
           node-version: 24
       - run: npm install
       - run: npm run build
+
+  media-worker:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/media-worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m compileall -q src
