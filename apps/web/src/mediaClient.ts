@@ -47,12 +47,21 @@ export async function searchSongs(query: string): Promise<SongSearchResult[]> {
 }
 
 
-export interface MediaPrepareResponse extends SongAssetManifest {
+export interface MediaPrepareJob {
+  jobId: string;
+  status: 'queued' | 'running' | 'ready' | 'error';
+  stage: string;
+  progress: number;
+  message: string;
+}
+
+export interface MediaPrepareStatus extends MediaPrepareJob {
+  manifest?: SongAssetManifest;
   manifestUrl?: string;
 }
 
-export async function prepareSong(source: SongSearchResult, mediaKind: 'audio' | 'video' = 'video') {
-  return request<MediaPrepareResponse>('/prepare', {
+export async function startSongPreparation(source: SongSearchResult, mediaKind: 'audio' | 'video' = 'video') {
+  return request<MediaPrepareJob>('/prepare', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -67,4 +76,9 @@ export async function prepareSong(source: SongSearchResult, mediaKind: 'audio' |
       thumbnail_url: source.thumbnailUrl
     })
   });
+}
+
+
+export async function getSongPreparationStatus(jobId: string): Promise<MediaPrepareStatus> {
+  return request<MediaPrepareStatus>(`/prepare/${encodeURIComponent(jobId)}`);
 }
