@@ -616,6 +616,7 @@ function SingerMicrophone({
     try {
       setError('');
       stop();
+      toneWindowRef.current = { start: 15, end: 90 };
 
       let referenceNotes: MelodyReferenceNote[] = [];
 
@@ -729,7 +730,6 @@ function SingerMicrophone({
 
             if (
               !toneSuggestionCheckedRef.current
-              && elapsedSeconds >= 18
               && elapsedSeconds >= toneWindowRef.current.start
               && elapsedSeconds <= toneWindowRef.current.end
               && pitchSamplesRef.current.length >= 30
