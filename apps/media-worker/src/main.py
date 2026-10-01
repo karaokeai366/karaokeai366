@@ -8,6 +8,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
+from urllib.parse import quote_plus
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query
@@ -118,20 +119,36 @@ def search(
     q: str = Query(min_length=2, max_length=160),
     limit: int = Query(default=8, ge=1, le=15),
 ) -> SearchResponse:
-    query = f"ytsearch{limit}:{q.strip()}"
-    raw = run_command(
-        [
-            "yt-dlp",
-            "--flat-playlist",
-            "--dump-single-json",
-            "--skip-download",
-            "--no-warnings",
-            query,
-        ]
-    )
+    normalized_query = q.strip()
+    music_search = f"https://music.youtube.com/search?q={quote_plus(normalized_query)}#songs"
 
-    payload = json.loads(raw)
-    entries = payload.get("entries", [])
+    try:
+        raw = run_command(
+            [
+                "yt-dlp",
+                "--flat-playlist",
+                "--dump-single-json",
+                "--skip-download",
+                "--no-warnings",
+                music_search,
+            ]
+        )
+        payload = json.loads(raw)
+        entries = payload.get("entries", [])
+    except HTTPException:
+        query = f"ytsearch{limit}:{normalized_query}"
+        raw = run_command(
+            [
+                "yt-dlp",
+                "--flat-playlist",
+                "--dump-single-json",
+                "--skip-download",
+                "--no-warnings",
+                query,
+            ]
+        )
+        payload = json.loads(raw)
+        entries = payload.get("entries", [])
     results: list[SearchResult] = []
 
     for entry in entries:
