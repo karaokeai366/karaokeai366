@@ -777,7 +777,7 @@ function TvStage({
         <aside className="tv-queue">
           <div className="tv-queue-heading"><span className="eyebrow">FILA</span><strong>{upcoming.length}</strong></div>
           {upcoming.slice(0, 6).map((entry, index) => (
-            <div className={\`tv-queue-row \${entry.status === 'playing' ? 'active' : ''}\`} key={entry.id}>
+            <div className={`tv-queue-row ${}entry.status === 'playing' ? 'active' : ''}`} key={entry.id}>
               <span>{index + 1}</span>
               <div className="tv-queue-thumb">{entry.thumbnailUrl ? <img src={entry.thumbnailUrl} alt="" /> : '🎵'}</div>
               <div><strong>{entry.title}</strong><small>{entry.artist ?? 'Artista não informado'}</small></div>
