@@ -12,7 +12,8 @@ export type MessageType =
   | 'session.command'
   | 'session.state.set'
   | 'queue.add'
-  | 'queue.remove';
+  | 'queue.remove'
+  | 'round.configure';
 
 export interface Envelope<TPayload = unknown> {
   id: string;
@@ -26,6 +27,8 @@ export interface Envelope<TPayload = unknown> {
 export interface QueueAddRequest {
   title: string;
   artist?: string;
+  sourceId?: string;
+  source?: string;
   sourceUrl?: string;
   requestedKey?: string;
 }
