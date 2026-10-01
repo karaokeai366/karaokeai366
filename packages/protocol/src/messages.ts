@@ -47,6 +47,7 @@ export interface QueueStatusSetRequest {
   preparationStage?: string;
   preparationProgress?: number;
   preparationMessage?: string;
+  playbackStartedAt?: number;
 }
 
 export interface RoundConfigureRequest {
