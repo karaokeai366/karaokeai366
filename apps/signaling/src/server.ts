@@ -458,6 +458,45 @@ wss.on('connection', (socket) => {
         break;
       }
 
+      case 'playback.finished': {
+        const client = clientsBySocket.get(socket);
+        if (!client) { reject(socket, 'Conecte-se a uma sessão primeiro.'); return; }
+        if (client.role !== 'tv') { reject(socket, 'Somente a TV pode informar o fim automático da reprodução.'); return; }
+        const session = sessions.get(client.sessionId);
+        if (!session) { reject(socket, 'Sessão não encontrada.'); return; }
+        const currentState = session.state as any;
+        const queue = Array.isArray(currentState?.queue) ? currentState.queue : [];
+        const queueEntryId = String(message.payload?.queueEntryId ?? '');
+        const entry = queue.find((item: any) => item.id === queueEntryId);
+        if (!entry) { reject(socket, 'Música não encontrada na fila.'); return; }
+        if (entry.status !== 'playing') { return; }
+        if (!Number.isFinite(entry.durationSeconds) || entry.durationSeconds <= 0
+          || !Number.isFinite(entry.playbackStartedAt)) {
+          reject(socket, 'A duração da música não está disponível para encerramento automático.');
+          return;
+        }
+        const elapsedSeconds = Math.max(0, (Date.now() - Number(entry.playbackStartedAt)) / 1000);
+        if (elapsedSeconds + 0.5 < Number(entry.durationSeconds)) {
+          reject(socket, 'A reprodução ainda não chegou ao final.');
+          return;
+        }
+        currentState.queue = queue.map((item: any) => {
+          if (item.id !== queueEntryId) return item;
+          const attempts = Array.isArray(item.attempts) ? [...item.attempts] : [];
+          const activeIndex = attempts.findIndex((attempt: any) => attempt.performanceId === item.activePerformanceId);
+          if (activeIndex >= 0) {
+            attempts[activeIndex] = {
+              ...attempts[activeIndex],
+              endedAt: Date.now(),
+              cancelled: false
+            };
+          }
+          return { ...item, status: 'completed', attempts };
+        });
+        session.state = currentState;
+        broadcast(session, 'session.state', { state: session.state });
+        break;
+      }
       case 'performance.complete': {
         const client = clientsBySocket.get(socket);
         if (!client) { reject(socket, 'Conecte-se a uma sessão primeiro.'); return; }
