@@ -1053,6 +1053,14 @@ function TvStage({
   const lastCompleted = [...session.queue]
     .reverse()
     .find((entry) => entry.status === 'completed' && entry.score);
+  const latestRoundResult = Object.entries(session.roundResultsByParticipant ?? {})
+    .map(([participantId, result]) => ({
+      participantId,
+      result,
+      participant: session.participants.find((item) => item.id === participantId)
+    }))
+    .filter((item) => item.result && item.result.roundId === session.roundId)
+    .sort((left, right) => right.result.updatedAt - left.result.updatedAt)[0] ?? null;
   const upcoming = session.queue.filter(
     (entry) => entry.status === 'ready' || entry.status === 'playing' || entry.status === 'preparing'
   );
@@ -1466,15 +1474,45 @@ function TvStage({
               {lastCompleted?.score && (
                 <div className="tv-result-card">
                   <span className="eyebrow">RESULTADO DA ÚLTIMA MÚSICA</span>
+                  <div className="tv-result-singer">
+                    🎙️ {session.participants.find((item) => item.id === lastCompleted.ownerParticipantId)?.name ?? 'Cantor'}
+                  </div>
                   <strong>{lastCompleted.score.overall}<small>/100</small></strong>
                   <div>
-                    <span>🎵 {lastCompleted.score.pitch}</span>
-                    <span>🥁 {lastCompleted.score.rhythm}</span>
-                    <span>🎯 {lastCompleted.score.precision}</span>
-                    <span>〽️ {lastCompleted.score.stability}</span>
+                    <span>🎵 Afinação {lastCompleted.score.pitch}</span>
+                    <span>🥁 Ritmo {lastCompleted.score.rhythm}</span>
+                    <span>🎯 Precisão {lastCompleted.score.precision}</span>
+                    <span>〽️ Estabilidade {lastCompleted.score.stability}</span>
                   </div>
                 </div>
               )}
+
+              {latestRoundResult?.result.finished && (
+                <div className="tv-round-final">
+                  <span className="eyebrow">🏁 RODADA CONCLUÍDA</span>
+                  <div className="tv-result-singer">
+                    🎙️ {latestRoundResult.participant?.name ?? 'Participante'}
+                  </div>
+                  <strong>{latestRoundResult.result.score ?? 0}<small>/100</small></strong>
+                  <p>
+                    {latestRoundResult.result.completedSongs} de {latestRoundResult.result.requiredSongs ?? latestRoundResult.result.completedSongs} músicas oficiais concluídas.
+                  </p>
+                  <div className="tv-round-songs">
+                    {latestRoundResult.result.songScores.map((item, index) => (
+                      <span key={item.queueEntryId}>Música {index + 1}: <strong>{item.score}</strong></span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {latestRoundResult?.result && !latestRoundResult.result.finished && latestRoundResult.result.completedSongs > 0 && (
+                <div className="tv-round-progress">
+                  <span className="eyebrow">🎯 RODADA</span>
+                  <strong>{latestRoundResult.result.completedSongs}{latestRoundResult.result.requiredSongs ? ` / ${latestRoundResult.result.requiredSongs}` : ''}</strong>
+                  {latestRoundResult.result.score !== undefined && <small>Média atual: {latestRoundResult.result.score}/100</small>}
+                </div>
+              )}
+
               {!playing && audioEnabled && <span className="tv-audio-ready">🔊 Áudio pronto</span>}
             </div>
           )}
