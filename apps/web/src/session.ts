@@ -49,6 +49,7 @@ export function createSession(name: string): SessionState {
     queueSize: 0,
     restartCreditsByParticipant: { [participantId]: 1 },
     roundId: randomId('round'),
+    autoAdvance: true,
     roundResultsByParticipant: {},
     roundMode: { kind: 'songs', songCount: 1 },
     status: 'lobby'
