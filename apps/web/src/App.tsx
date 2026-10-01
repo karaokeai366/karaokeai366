@@ -108,6 +108,7 @@ export function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SongSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
+  const [searchPerformed, setSearchPerformed] = useState(false);
   const [roundCount, setRoundCount] = useState('1');
   const [roundOpen, setRoundOpen] = useState(false);
 
@@ -242,9 +243,13 @@ export function App() {
 
     setSearching(true);
     setError('');
+    setSearchPerformed(true);
     try {
-      setSearchResults(await searchSongs(query));
-      if (searchResults.length === 0) setError('');
+      const results = await searchSongs(query);
+      setSearchResults(results);
+      if (results.length === 0) {
+        setError('Nenhuma música encontrada. Tente título + artista ou outra versão.');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível pesquisar músicas.');
     } finally {
@@ -414,7 +419,10 @@ export function App() {
             <div className="search-box">
               <input
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setSearchPerformed(false);
+                }}
                 placeholder="🔎 Pesquisar música e artista"
                 maxLength={160}
                 onKeyDown={(e) => e.key === 'Enter' && searchMusic()}
@@ -461,6 +469,15 @@ export function App() {
                     </div>
                   </article>
                 ))}
+              </div>
+            )}
+            {searchPerformed && !searching && searchResults.length === 0 && (
+              <div className="search-empty">
+                <span aria-hidden="true">🔎</span>
+                <div>
+                  <strong>Nenhum resultado encontrado</strong>
+                  <small>Experimente informar o título e o artista, ou procure uma versão diferente.</small>
+                </div>
               </div>
             )}
             <QueueList session={session} currentParticipantId={currentParticipantId} onRemove={removeQueueEntry} onPrepare={prepareQueueEntry} />
