@@ -497,7 +497,7 @@ export function App() {
         status: 'preparing'
       });
 
-      await prepareSong({
+      const prepared = await prepareSong({
         sourceId: entry.sourceId,
         source: entry.source ?? 'youtube',
         title: entry.title,
@@ -508,7 +508,9 @@ export function App() {
 
       transport.sendRaw('queue.status.set', session.sessionId, currentParticipantId, {
         queueEntryId,
-        status: 'ready'
+        status: 'ready',
+        assetId: prepared.assetId,
+        manifestUrl: prepared.manifestUrl ?? prepared.files.manifest
       });
     } catch (err) {
       try {
