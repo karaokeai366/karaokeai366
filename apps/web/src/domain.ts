@@ -34,6 +34,16 @@ export interface PerformanceAttempt {
   score?: PerformanceScore;
 }
 
+export interface RoundResult {
+  roundId: string;
+  completedSongs: number;
+  requiredSongs?: number;
+  score?: number;
+  finished: boolean;
+  updatedAt: number;
+  songScores: Array<{ queueEntryId: string; score: number }>;
+}
+
 export interface QueueEntry {
   id: string;
   ownerParticipantId: string;
@@ -43,6 +53,7 @@ export interface QueueEntry {
   source?: string;
   sourceUrl?: string;
   thumbnailUrl?: string;
+  roundId?: string;
   requestedKey?: string;
   originalKey?: string;
   selectedKey?: string;
@@ -68,6 +79,8 @@ export interface SessionState {
   queue: QueueEntry[];
   queueSize: number;
   restartCreditsByParticipant?: Record<string, number>;
+  roundId: string;
+  roundResultsByParticipant?: Record<string, RoundResult>;
   roundMode: RoundMode;
   status: 'lobby' | 'playing' | 'finished';
 }
