@@ -330,3 +330,13 @@ button { border: 0; border-radius: 14px; min-height: 48px; padding: 0 18px; colo
 .toggle-button { min-width: 100px; min-height: 42px; border: 1px solid #343d5f; border-radius: 12px; background: #11172a; color: #8d96af; font-size: 11px; font-weight: 900; }
 .toggle-button.selected { border-color: #4c5aa0; background: #1a2243; color: #d8dcff; }
 @media (max-width: 620px) { .auto-advance-panel { align-items: stretch; flex-direction: column; } }
+
+.stage-control-panel { overflow: hidden; }
+.stage-control-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.stage-control-actions button { min-height: 42px; }
+.danger-button { border-color: #6d3844 !important; }
+.danger-button:hover { border-color: #9a5060 !important; }
+@media (max-width: 620px) {
+  .stage-control-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stage-control-actions button { width: 100%; }
+}
