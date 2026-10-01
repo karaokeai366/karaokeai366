@@ -43,3 +43,18 @@ export async function searchSongs(query: string): Promise<SongSearchResult[]> {
     sourceUrl: result.source_url
   }));
 }
+
+
+export interface MediaDownloadResponse {
+  asset_id: string;
+  original_file: string;
+  duration_seconds?: number | null;
+}
+
+export async function prepareSong(sourceUrl: string, mediaKind: 'audio' | 'video' = 'video') {
+  return request<MediaDownloadResponse>('/download', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source_url: sourceUrl, media_kind: mediaKind })
+  });
+}
