@@ -28,6 +28,46 @@ function scoreLabel(score: number): string {
   return 'Limitada';
 }
 
+function QueueList({
+  session,
+  currentParticipantId,
+  onRemove
+}: {
+  session: SessionState;
+  currentParticipantId: string;
+  onRemove: (queueEntryId: string) => void;
+}) {
+  if (session.queue.length === 0) {
+    return <div className="empty-queue">A fila está vazia. A primeira música pode ser adicionada pelo celular de quem vai cantar.</div>;
+  }
+
+  return (
+    <div className="queue-list">
+      {session.queue.map((entry, index) => {
+        const owner = session.participants.find((participant) => participant.id === entry.ownerParticipantId);
+        const canRemove = entry.ownerParticipantId === currentParticipantId || session.hostParticipantId === currentParticipantId;
+
+        return (
+          <div className="queue-row" key={entry.id}>
+            <div className="queue-position">{index + 1}</div>
+            <div className="queue-icon">🎵</div>
+            <div className="queue-info">
+              <strong>{entry.title}</strong>
+              <small>{entry.artist ?? 'Artista não informado'} · {owner?.name ?? 'Participante'}</small>
+            </div>
+            {entry.requestedKey && <span className="queue-key">Tom {entry.requestedKey}</span>}
+            {canRemove && (
+              <button className="queue-remove" onClick={() => onRemove(entry.id)} aria-label={`Remover ${entry.title}`}>
+                ×
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function App() {
   const initialJoin = new URLSearchParams(window.location.search).get('join') === '1';
   const storedSession = getLocalSession();
@@ -44,6 +84,9 @@ export function App() {
   const [connection, setConnection] = useState<'offline' | 'connecting' | 'online' | 'error'>('offline');
   const [error, setError] = useState('');
   const [transport, setTransport] = useState<WebSocketTransport | null>(null);
+  const [songTitle, setSongTitle] = useState('');
+  const [songArtist, setSongArtist] = useState('');
+
 
   const joinParams = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
@@ -166,6 +209,34 @@ export function App() {
     await connectAsHost(session);
   }
 
+  async function addSongToQueue() {
+    const title = songTitle.trim();
+    if (!title || !session || !transport || !currentParticipantId) return;
+
+    try {
+      transport.sendRaw('queue.add', session.sessionId, currentParticipantId, {
+        title,
+        artist: songArtist.trim() || undefined
+      });
+      setSongTitle('');
+      setSongArtist('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível adicionar a música.');
+    }
+  }
+
+  function removeQueueEntry(queueEntryId: string) {
+    if (!session || !transport || !currentParticipantId) return;
+    try {
+      transport.sendRaw('queue.remove', session.sessionId, currentParticipantId, {
+        queueEntryId
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível remover a música.');
+    }
+  }
+
+
   const currentParticipant = session?.participants.find(
     (participant) => participant.id === currentParticipantId
   );
@@ -232,6 +303,19 @@ export function App() {
             <div className="connection-line"><span className={`connection-badge ${connection}`}>{connection === 'online' ? '🟢 conectado' : '🟡 conectando'}</span><span>{session.participants.length} participante(s)</span></div>
           </div>
           <div className="panel">
+            <div className="panel-heading">
+              <div><span className="eyebrow">SUA FILA</span><h3>Escolha uma música</h3></div>
+              <span className="tag">PARTICIPANTE</span>
+            </div>
+            <p className="muted">A busca automática será adicionada em seguida. Este campo já testa a regra de propriedade da fila.</p>
+            <div className="song-form">
+              <input value={songTitle} onChange={(e) => setSongTitle(e.target.value)} placeholder="Nome da música" maxLength={160} />
+              <input value={songArtist} onChange={(e) => setSongArtist(e.target.value)} placeholder="Artista (opcional)" maxLength={120} />
+              <button className="primary" onClick={addSongToQueue}>Adicionar à fila</button>
+            </div>
+            <QueueList session={session} currentParticipantId={currentParticipantId} onRemove={removeQueueEntry} />
+          </div>
+          <div className="panel">
             <div className="panel-heading"><div><span className="eyebrow">PARTICIPANTES</span><h3>Quem está na sessão</h3></div><span className="tag">PARTICIPANTE</span></div>
             <div className="people-list">
               {session.participants.map((participant) => (
@@ -274,6 +358,20 @@ export function App() {
             <div className="stat-card"><span>Na fila</span><strong>{session?.queueSize ?? 0}</strong></div>
             <div className="stat-card"><span>Rodada</span><strong>{session?.roundMode.kind === 'open' ? '∞' : session?.roundMode.songCount ?? 1}</strong></div>
           </div>
+          <div className="panel">
+            <div className="panel-heading">
+              <div><span className="eyebrow">FILA COMPARTILHADA</span><h3>Adicione a primeira música</h3></div>
+              <span className="tag">TESTE DO MVP</span>
+            </div>
+            <p className="muted">Por enquanto o título é digitado manualmente. A busca em fontes de música e o pré-processamento entram no próximo módulo.</p>
+            <div className="song-form">
+              <input value={songTitle} onChange={(e) => setSongTitle(e.target.value)} placeholder="Nome da música" maxLength={160} />
+              <input value={songArtist} onChange={(e) => setSongArtist(e.target.value)} placeholder="Artista (opcional)" maxLength={120} />
+              <button className="primary" onClick={addSongToQueue}>Adicionar à fila</button>
+            </div>
+            <QueueList session={session!} currentParticipantId={currentParticipantId} onRemove={removeQueueEntry} />
+          </div>
+
 
           <div className="panel">
             <div className="panel-heading">
@@ -293,7 +391,7 @@ export function App() {
         </div>
 
         <aside className="sidebar">
-          <div className="panel"><span className="eyebrow">PRÓXIMOS PASSOS</span><ol className="roadmap-mini"><li className="done">Criar sessão</li><li className="active">Convidar participantes</li><li>Montar fila</li><li>Preparar músicas</li><li>Cantar e avaliar</li></ol></div>
+          <div className="panel"><span className="eyebrow">PRÓXIMOS PASSOS</span><ol className="roadmap-mini"><li className="done">Criar sessão</li><li className="done">Convidar participantes</li><li className="active">Montar fila</li><li>Preparar músicas</li><li>Cantar e avaliar</li></ol></div>
           <div className="panel capability-panel">
             <span className="eyebrow">CAPACIDADE DO HOST</span>
             <div className="big-score">{Math.round(currentParticipant?.capabilities.measuredScore ?? 0)}<small>/100</small></div>
