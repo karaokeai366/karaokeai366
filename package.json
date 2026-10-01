@@ -1,0 +1,12 @@
+{
+  "name": "karaokeai",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Local-first distributed AI karaoke platform",
+  "scripts": {
+    "dev": "npm --prefix apps/web run dev",
+    "build": "npm --prefix apps/web run build",
+    "preview": "npm --prefix apps/web run preview",
+    "typecheck": "npm --prefix apps/web run typecheck"
+  }
+}
