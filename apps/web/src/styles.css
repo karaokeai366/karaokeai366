@@ -177,3 +177,10 @@ button { border: 0; border-radius: 14px; min-height: 48px; padding: 0 18px; colo
 .queue-status.ready { color: #8be4b6; border-color: #2c5a49; }
 .queue-status.cancelled { color: #ef9ba6; border-color: #653b43; }
 @media (max-width: 760px) { .queue-prepare { display: none; } }
+
+.queue-preparation { min-width: 180px; max-width: 230px; }
+.queue-preparation-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #b8c0da; font-size: 10px; }
+.queue-preparation-line strong { color: #e3e6fb; }
+.queue-progress { height: 5px; margin-top: 6px; overflow: hidden; border-radius: 999px; background: #1b2237; }
+.queue-progress span { display: block; height: 100%; border-radius: inherit; background: #6e78ff; transition: width .25s ease; }
+.queue-preparation small { display: block; margin-top: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #747e9b; font-size: 9px; }
