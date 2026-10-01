@@ -364,12 +364,33 @@ export function App() {
               <div><span className="eyebrow">SUA FILA</span><h3>Escolha uma música</h3></div>
               <span className="tag">PARTICIPANTE</span>
             </div>
-            <p className="muted">A busca automática será adicionada em seguida. Este campo já testa a regra de propriedade da fila.</p>
-            <div className="song-form">
-              <input value={songTitle} onChange={(e) => setSongTitle(e.target.value)} placeholder="Nome da música" maxLength={160} />
-              <input value={songArtist} onChange={(e) => setSongArtist(e.target.value)} placeholder="Artista (opcional)" maxLength={120} />
-              <button className="primary" onClick={addSongToQueue}>Adicionar à fila</button>
+            <p className="muted">Pesquise a música, escolha a versão desejada e coloque-a na fila com um toque.</p>
+            <div className="search-box">
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="🔎 Pesquisar música e artista"
+                maxLength={160}
+                onKeyDown={(e) => e.key === 'Enter' && searchMusic()}
+              />
+              <button className="primary" onClick={searchMusic} disabled={searching}>
+                {searching ? 'Pesquisando…' : 'Pesquisar'}
+              </button>
             </div>
+            {searchResults.length > 0 && (
+              <div className="search-results">
+                {searchResults.map((result) => (
+                  <div className="search-result" key={result.sourceId}>
+                    <div className="result-thumb">{result.thumbnailUrl ? <img src={result.thumbnailUrl} alt="" loading="lazy" /> : '🎵'}</div>
+                    <div className="result-info">
+                      <strong>{result.title}</strong>
+                      <small>{result.artist ?? 'Artista não identificado'}{result.durationSeconds ? ` · ${Math.round(result.durationSeconds / 60)} min` : ''}</small>
+                    </div>
+                    <button className="secondary add-result" onClick={() => addSearchResultToQueue(result)}>+ Fila</button>
+                  </div>
+                ))}
+              </div>
+            )}
             <QueueList session={session} currentParticipantId={currentParticipantId} onRemove={removeQueueEntry} />
           </div>
           <div className="panel">
