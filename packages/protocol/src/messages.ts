@@ -13,6 +13,7 @@ export type MessageType =
   | 'session.state.set'
   | 'queue.add'
   | 'queue.remove'
+  | 'queue.status.set'
   | 'round.configure';
 
 export interface Envelope<TPayload = unknown> {
