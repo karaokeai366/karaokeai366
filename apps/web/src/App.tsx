@@ -303,7 +303,6 @@ function QueueList({
 export function App() {
   const initialParams = new URLSearchParams(window.location.search);
   const initialJoin = initialParams.get('join') === '1';
-  const initialTv = initialParams.get('tv') === '1';
   const storedSession = getLocalSession();
 
   const [view, setView] = useState<View>(
@@ -401,7 +400,7 @@ export function App() {
 
   async function handleJoin() {
     const trimmed = joinName.trim();
-    if (!trimmed || !joinParams.sessionId) return;
+    if ((!joinParams.tv && !trimmed) || !joinParams.sessionId) return;
 
     setConnection('connecting');
     setError('');
