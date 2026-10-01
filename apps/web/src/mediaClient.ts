@@ -91,7 +91,7 @@ export async function getSongPreparationStatus(jobId: string): Promise<MediaPrep
 
 
 export async function getSongAssetManifest(manifestUrl: string): Promise<SongAssetManifest> {
-  const response = await fetch(manifestUrl);
+  const response = await fetch(manifestUrl, { cache: 'no-store' });
   if (!response.ok) {
     throw new Error(`Não foi possível carregar o SongAsset (${response.status}).`);
   }
