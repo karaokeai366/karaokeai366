@@ -35,6 +35,7 @@ export interface QueueAddRequest {
   sourceUrl?: string;
   thumbnailUrl?: string;
   requestedKey?: string;
+  durationSeconds?: number;
 }
 
 export interface QueueRemoveRequest {
