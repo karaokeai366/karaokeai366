@@ -102,3 +102,32 @@ export function resolveSongAssetUrl(manifestUrl: string, assetPath?: string): st
   if (!assetPath) return null;
   return new URL(assetPath, manifestUrl).toString();
 }
+
+export interface MediaKeyTranspositionResponse {
+  assetId: string;
+  originalKey?: string | null;
+  selectedKey?: string | null;
+  manifest: SongAssetManifest;
+  manifestUrl: string;
+}
+
+export async function transposeSongKey(
+  assetId: string,
+  targetKey: string
+): Promise<MediaKeyTranspositionResponse> {
+  const response = await request<MediaKeyTranspositionResponse>('/transpose-key', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      asset_id: assetId,
+      target_key: targetKey
+    })
+  });
+
+  response.manifestUrl = new URL(
+    response.manifestUrl,
+    MEDIA_WORKER_URL + '/'
+  ).toString();
+
+  return response;
+}
