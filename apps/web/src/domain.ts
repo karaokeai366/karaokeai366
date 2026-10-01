@@ -32,6 +32,8 @@ export interface QueueEntry {
   sourceUrl?: string;
   thumbnailUrl?: string;
   requestedKey?: string;
+  assetId?: string;
+  manifestUrl?: string;
   addedAt: number;
   status: 'queued' | 'preparing' | 'ready' | 'playing' | 'completed' | 'cancelled';
 }
