@@ -7,3 +7,17 @@ services:
     ports:
       - "8787:8787"
     restart: unless-stopped
+
+  media-worker:
+    build:
+      context: ./apps/media-worker
+    environment:
+      KARAOKE_MEDIA_ROOT: /app/data/media
+    ports:
+      - "8790:8790"
+    volumes:
+      - karaokeai-media:/app/data/media
+    restart: unless-stopped
+
+volumes:
+  karaokeai-media:
