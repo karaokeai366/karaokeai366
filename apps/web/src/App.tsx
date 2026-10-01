@@ -1961,9 +1961,9 @@ function TvStage({
           ) : (
             <div className="tv-waiting">
               <span className="tv-mic">🎤</span>
-              <span className="eyebrow">PALCO PRONTO</span>
-              <h1>Aguardando a próxima música</h1>
-              <p>O anfitrião inicia a apresentação pelo painel de controle.</p>
+              <span className="eyebrow">{session.status === 'finished' ? '🏁 APRESENTAÇÃO ENCERRADA' : 'PALCO PRONTO'}</span>
+              <h1>{session.status === 'finished' ? 'Rodada concluída' : 'Aguardando a próxima música'}</h1>
+              <p>{session.status === 'finished' ? 'Todos os participantes elegíveis concluíram a rodada.' : 'O próximo cantor será chamado automaticamente ou pelo Host.'}</p>
               {lastCompleted?.score && (
                 <div className="tv-result-card">
                   <span className="eyebrow">RESULTADO DA ÚLTIMA MÚSICA</span>
@@ -2669,7 +2669,7 @@ export function App() {
             <span className="eyebrow">VOCÊ ESTÁ NA SESSÃO</span>
             <h2>Olá, {currentParticipant?.name ?? 'cantor'} 👋</h2>
             <p className="muted">Pesquise a música, confira a capa e a versão desejada e coloque-a na fila com um toque.</p>
-            <div className="connection-line"><span className={`connection-badge ${connection}`}>{connection === 'online' ? '🟢 conectado' : '🟡 conectando'}</span><span>{session.participants.length} participante(s)</span><span>· rodada {session.roundMode.kind === 'open' ? 'aberta' : `${session.roundMode.songCount} música(s)`}</span></div>
+            <div className="connection-line"><span className={`connection-badge ${connection}`}>{connection === 'online' ? '🟢 conectado' : '🟡 conectando'}</span><span>{session.participants.length} participante(s)</span><span>· rodada {session.roundMode.kind === 'open' ? 'aberta' : `${session.roundMode.songCount} música(s)`}</span></div>{session.status === 'finished' && <span>· 🏁 encerrada</span>}
           </div>
           <RoundProgress session={session} participantId={currentParticipantId} />
           <SingerNextUp
