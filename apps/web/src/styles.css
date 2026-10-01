@@ -306,3 +306,18 @@ button { border: 0; border-radius: 14px; min-height: 48px; padding: 0 18px; colo
 .round-preset.selected { border-color: #6672ee; background: #1a2140; color: #e3e6ff; }
 
 .round-preset-custom { display: inline-flex; align-items: center; justify-content: center; min-width: 155px; color: #727b98; cursor: default; }
+
+.tv-result-card { margin: 24px auto 0; max-width: 620px; padding: 20px 24px; border: 1px solid #30385a; border-radius: 22px; background: rgba(11, 15, 28, .82); box-shadow: 0 18px 60px rgba(0,0,0,.22); }
+.tv-result-card .eyebrow, .tv-round-final .eyebrow, .tv-round-progress .eyebrow { display: block; }
+.tv-result-card strong, .tv-round-final strong { display: block; margin: 10px 0; font-size: 68px; line-height: .95; letter-spacing: -.06em; color: #eef0ff; }
+.tv-result-card strong small, .tv-round-final strong small { margin-left: 6px; color: #7e88a5; font-size: 20px; letter-spacing: 0; }
+.tv-result-singer { margin-top: 9px; color: #b3bbd4; font-size: 13px; font-weight: 700; }
+.tv-result-card > div:last-child { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px 14px; color: #8a94af; font-size: 11px; }
+.tv-round-final { margin: 18px auto 0; max-width: 620px; padding: 22px 24px; border: 1px solid #39466b; border-radius: 24px; background: linear-gradient(150deg, #141a32, #0b1020); }
+.tv-round-final p { margin: 0; color: #8993ad; font-size: 12px; }
+.tv-round-songs { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.tv-round-songs span { padding: 6px 9px; border: 1px solid #2b3554; border-radius: 999px; color: #8993ad; background: #0b1120; font-size: 10px; }
+.tv-round-songs strong { color: #cbd1e4; }
+.tv-round-progress { display: grid; gap: 4px; margin: 18px auto 0; max-width: 420px; padding: 12px 15px; border: 1px solid #262f4b; border-radius: 16px; background: #0c1120; }
+.tv-round-progress strong { color: #e0e4f2; font-size: 20px; }
+.tv-round-progress small { color: #7a849e; font-size: 11px; }
