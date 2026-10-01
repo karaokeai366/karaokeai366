@@ -799,7 +799,12 @@ function SingerMicrophone({
 
           if (detection) {
             const currentPlayback = currentPlayingRef.current;
-            if (!currentPlayback || currentPlayback.playbackState === 'paused') {
+            if (
+              !currentPlayback
+              || currentPlayback.playbackState === 'paused'
+              || !currentPlayback.playbackStartedAt
+              || Date.now() < currentPlayback.playbackStartedAt
+            ) {
               analysisFrameRef.current = window.requestAnimationFrame(sampleLoop);
               return;
             }
@@ -961,7 +966,18 @@ function SingerMicrophone({
       <div className="microphone-panel">
         <div>
           <span className="eyebrow">🎙️ SEU MICROFONE</span>
-          <strong>{active ? 'Microfone conectado à TV' : 'Sua voz pode ir para o palco'}</strong>
+          <strong>
+            {playing?.playbackStartedAt && playing.playbackStartedAt > Date.now()
+              ? '⏱️ É sua vez — prepare-se!'
+              : active
+                ? 'Microfone conectado à TV'
+                : 'Sua voz pode ir para o palco'}
+          </strong>
+          {playing?.playbackStartedAt && playing.playbackStartedAt > Date.now() && (
+            <small className="singer-countdown">
+              Começando em <strong>{Math.max(1, Math.ceil((playing.playbackStartedAt - Date.now()) / 1000))}</strong>
+            </small>
+          )}
           {playing && (playing.selectedKey || playing.originalKey) && (
             <small>Tom atual: <strong>{pitchClass(playing.selectedKey ?? playing.originalKey)}</strong></small>
           )}
@@ -1506,6 +1522,13 @@ function TvStage({
                 <h2>{playing.artist ?? 'Artista não informado'}</h2>
                 <div className="tv-singer">🎙️ {owner?.name ?? 'Cantor'}</div>
 
+                {playing.playbackStartedAt && playing.playbackStartedAt > Date.now() && (
+                  <div className="tv-countdown-banner">
+                    <span>PRÓXIMO CANTOR</span>
+                    <strong>{owner?.name ?? 'Cantor'} · começa em {Math.max(1, Math.ceil((playing.playbackStartedAt - Date.now()) / 1000))}</strong>
+                  </div>
+                )}
+
                 {currentLine ? (
                   <div className="tv-lyrics">
                     <div className="tv-lyrics-current">{currentLine.text}</div>
@@ -1521,6 +1544,11 @@ function TvStage({
 
                     <div className="tv-playback">
                   <div className="tv-time">{Math.floor(elapsed / 60)}:{String(Math.floor(elapsed % 60)).padStart(2, '0')}</div>
+                  {playing.playbackStartedAt && playing.playbackStartedAt > Date.now() && (
+                    <span className="tv-countdown-badge">
+                      COMEÇA EM {Math.max(1, Math.ceil((playing.playbackStartedAt - Date.now()) / 1000))}
+                    </span>
+                  )}
                   {playing.playbackState === 'paused' && <span className="tv-paused-badge">⏸ PAUSADO</span>}
                   {!audioEnabled && (
                     <button className="tv-audio-button" onClick={enableAudio}>🔊 Ativar áudio</button>
