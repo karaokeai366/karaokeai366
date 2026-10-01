@@ -33,6 +33,64 @@ app.add_middleware(
 
 app.mount("/media", StaticFiles(directory=str(ROOT)), name="media")
 
+type PrepareJob = dict[str, Any]
+prepare_jobs: dict[str, PrepareJob] = {}
+
+
+def update_prepare_job(job_id: str, stage: str, percent: int, message: str) -> None:
+    job = prepare_jobs.get(job_id)
+    if not job:
+        return
+    job.update({
+        "status": "running",
+        "stage": stage,
+        "progress": percent,
+        "message": message,
+        "updatedAt": asyncio.get_event_loop().time(),
+    })
+
+
+async def run_prepare_job(
+    job_id: str,
+    request: PrepareRequest,
+    source: dict[str, Any],
+) -> None:
+    try:
+        prepare_jobs[job_id].update({"status": "running"})
+        manifest = await asyncio.to_thread(
+            prepare_asset,
+            asset_id=safe_asset_id(request.asset_id),
+            source=source,
+            media_kind=request.media_kind,
+            root=ROOT,
+            progress=lambda stage, percent, message: update_prepare_job(
+                job_id, stage, percent, message
+            ),
+        )
+        prepare_jobs[job_id].update({
+            "status": "ready",
+            "stage": "ready",
+            "progress": 100,
+            "message": "Música pronta para cantar.",
+            "manifest": manifest,
+            "updatedAt": asyncio.get_event_loop().time(),
+        })
+    except PipelineError as exc:
+        prepare_jobs[job_id].update({
+            "status": "error",
+            "stage": "error",
+            "message": str(exc),
+            "updatedAt": asyncio.get_event_loop().time(),
+        })
+    except Exception as exc:
+        prepare_jobs[job_id].update({
+            "status": "error",
+            "stage": "error",
+            "message": f"Falha na preparação da música: {exc}",
+            "updatedAt": asyncio.get_event_loop().time(),
+        })
+
+
 
 class SearchResult(BaseModel):
     source_id: str
@@ -269,23 +327,40 @@ async def prepare(request: PrepareRequest) -> dict[str, Any]:
         "sourceUrl": request.source_url.strip(),
     }
 
-    asset_id = safe_asset_id(request.asset_id)
+    job_id = uuid4().hex
+    prepare_jobs[job_id] = {
+        "jobId": job_id,
+        "status": "queued",
+        "stage": "queued",
+        "progress": 0,
+        "message": "Preparação aguardando início…",
+        "createdAt": asyncio.get_event_loop().time(),
+        "updatedAt": asyncio.get_event_loop().time(),
+    }
 
-    try:
-        manifest = await asyncio.to_thread(
-            prepare_asset,
-            asset_id=asset_id,
-            source=source,
-            media_kind=request.media_kind,
-            root=ROOT,
-        )
-    except PipelineError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Falha na preparação da música: {exc}") from exc
+    asyncio.create_task(run_prepare_job(job_id, request, source))
 
-    manifest["manifestUrl"] = f"/media/{asset_id}/manifest.json"
-    return manifest
+    return {
+        "jobId": job_id,
+        "status": "queued",
+        "stage": "queued",
+        "progress": 0,
+        "message": "Preparação iniciada.",
+    }
+
+
+@app.get("/prepare/{job_id}")
+async def prepare_status(job_id: str) -> dict[str, Any]:
+    job = prepare_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job de preparação não encontrado.")
+
+    result = dict(job)
+    manifest = result.pop("manifest", None)
+    if manifest is not None:
+        result["manifest"] = manifest
+        result["manifestUrl"] = f"/media/{manifest['assetId']}/manifest.json"
+    return result
 
 
 @app.post("/download", response_model=DownloadResponse)
