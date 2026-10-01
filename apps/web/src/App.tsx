@@ -328,6 +328,7 @@ function SingerMicrophone({
   const tv = session.participants.find((participant) => participant.role === 'tv');
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
   const handledSignalsRef = useRef(new Set<string>());
   const [active, setActive] = useState(false);
   const [error, setError] = useState('');
@@ -366,10 +367,39 @@ function SingerMicrophone({
     if (!answer || !peerRef.current) return;
 
     handledSignalsRef.current.add(answerSignal.id!);
-    peerRef.current.setRemoteDescription(answer).catch(() => {
-      setError('Não foi possível negociar o áudio com a TV.');
-    });
+    peerRef.current.setRemoteDescription(answer)
+      .then(async () => {
+        for (const candidate of pendingIceRef.current) {
+          await peerRef.current?.addIceCandidate(candidate);
+        }
+        pendingIceRef.current = [];
+      })
+      .catch(() => {
+        setError('Não foi possível negociar o áudio com a TV.');
+      });
   }, [signals, playing, participantId, active, tv?.id]);
+
+  useEffect(() => {
+    const iceMessage = signals.find((message) =>
+      message.id
+      && !handledSignalsRef.current.has(message.id)
+      && message.payload?.command === 'webrtc.ice-candidate'
+      && message.payload.data?.targetParticipantId === participantId
+      && message.payload.data.fromParticipantId === tv?.id
+    );
+
+    if (!iceMessage?.id || !iceMessage.payload?.data?.candidate) return;
+    handledSignalsRef.current.add(iceMessage.id);
+
+    const candidate = iceMessage.payload.data.candidate;
+    if (peerRef.current?.remoteDescription) {
+      peerRef.current.addIceCandidate(candidate).catch(() => {
+        pendingIceRef.current.push(candidate);
+      });
+    } else {
+      pendingIceRef.current.push(candidate);
+    }
+  }, [signals, participantId, tv?.id]);
 
   async function start() {
     if (!transport || !playing || playing.ownerParticipantId !== participantId || !tv) {
@@ -379,7 +409,14 @@ function SingerMicrophone({
 
     if (!isWebRtcSupported()) {
       setSupported(false);
-      setError('Este navegador não oferece microfone/WebRTC.');
+      setError(window.isSecureContext
+        ? 'Este navegador não oferece microfone/WebRTC.'
+        : 'O microfone precisa de HTTPS ou localhost.');
+      return;
+    }
+
+    if (!window.isSecureContext) {
+      setError('O microfone precisa de HTTPS ou localhost.');
       return;
     }
 
