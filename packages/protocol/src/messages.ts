@@ -1,8 +1,10 @@
 export type MessageType =
   | 'session.create'
   | 'session.join'
+  | 'session.reconnect'
   | 'session.created'
   | 'session.joined'
+  | 'session.reconnected'
   | 'session.state'
   | 'session.state.request'
   | 'session.error'
