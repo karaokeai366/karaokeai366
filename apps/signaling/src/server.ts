@@ -57,6 +57,10 @@ function transitionPerformanceAttempt(
         ...(nextStatus !== 'completed' ? { cancelReason } : {})
       };
     }
+
+    if (nextStatus !== 'completed') {
+      activePerformanceId = undefined;
+    }
   }
 
   if (nextStatus === 'playing') {
@@ -405,6 +409,8 @@ wss.on('connection', (socket) => {
 
         currentState.restartCreditsByParticipant[client.participantId] = credits - 1;
         const now = Date.now();
+        const newPerformanceId = `${queueEntryId}-${now}-${randomUUID().slice(0, 8)}`;
+
         currentState.queue = queue.map((item: any) => {
           if (item.id !== queueEntryId) return item;
 
@@ -412,25 +418,15 @@ wss.on('connection', (socket) => {
             item,
             'playing',
             now,
-            undefined,
+            newPerformanceId,
             'restart'
           );
 
           return {
             ...item,
             playbackStartedAt: now,
-            activePerformanceId: `${queueEntryId}-${now}-${randomUUID().slice(0, 8)}`,
-            attempts: [
-              ...attemptState.attempts.filter(
-                (attempt: any) => attempt.performanceId !== attemptState.activePerformanceId
-              ),
-              {
-                performanceId: `${queueEntryId}-${now}-${randomUUID().slice(0, 8)}`,
-                startedAt: now,
-                cancelled: false,
-                official: false
-              }
-            ],
+            activePerformanceId: attemptState.activePerformanceId,
+            attempts: attemptState.attempts,
             score: undefined
           };
         });
