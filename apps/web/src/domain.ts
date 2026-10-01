@@ -31,6 +31,7 @@ export interface PerformanceAttempt {
   cancelled: boolean;
   official: boolean;
   cancelReason?: 'restart' | 'key-test' | 'abandoned';
+  score?: PerformanceScore;
 }
 
 export interface QueueEntry {
