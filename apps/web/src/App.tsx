@@ -447,6 +447,7 @@ function SingerMicrophone({
   const streamRef = useRef<MediaStream | null>(null);
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
   const handledSignalsRef = useRef(new Set<string>());
+  const autoFinishSentRef = useRef<string | null>(null);
 
   const pitchSamplesRef = useRef<PitchSample[]>([]);
   const referenceNotesRef = useRef<MelodyReferenceNote[]>([]);
@@ -1180,6 +1181,7 @@ function TvStage({
 
   useEffect(() => {
     if (!playing) {
+      autoFinishSentRef.current = null;
       peerRef.current?.close();
       peerRef.current = null;
       if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
@@ -1247,6 +1249,34 @@ function TvStage({
     const timer = window.setInterval(update, 250);
     return () => window.clearInterval(timer);
   }, [playing?.id, playing?.playbackStartedAt]);
+
+  useEffect(() => {
+    if (!transport || !playing || !playing.durationSeconds || !playing.playbackStartedAt) {
+      return;
+    }
+
+    const update = () => {
+      if (autoFinishSentRef.current === playing.id) return;
+
+      const elapsedSeconds =
+        Math.max(0, (Date.now() - playing.playbackStartedAt!) / 1000);
+
+      if (elapsedSeconds + 0.5 >= playing.durationSeconds!) {
+        autoFinishSentRef.current = playing.id;
+
+        transport.sendRaw(
+          'playback.finished',
+          session.sessionId,
+          participantId,
+          { queueEntryId: playing.id }
+        );
+      }
+    };
+
+    update();
+    const timer = window.setInterval(update, 250);
+    return () => window.clearInterval(timer);
+  }, [playing?.id, playing?.durationSeconds, playing?.playbackStartedAt, transport, session.sessionId, participantId]);
 
   useEffect(() => {
     const audio = audioRef.current;
