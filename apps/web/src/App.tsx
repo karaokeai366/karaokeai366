@@ -86,6 +86,8 @@ export function App() {
   const [transport, setTransport] = useState<WebSocketTransport | null>(null);
   const [songTitle, setSongTitle] = useState('');
   const [songArtist, setSongArtist] = useState('');
+  const [roundCount, setRoundCount] = useState('1');
+  const [roundOpen, setRoundOpen] = useState(false);
 
 
   const joinParams = useMemo(() => {
@@ -236,6 +238,20 @@ export function App() {
     }
   }
 
+  function configureRound() {
+    if (!session || !transport || !currentParticipantId) return;
+
+    const count = Math.floor(Number(roundCount));
+    if (!roundOpen && (!Number.isFinite(count) || count < 1 || count > 100)) {
+      setError('Informe uma quantidade entre 1 e 100 músicas.');
+      return;
+    }
+
+    transport.sendRaw('round.configure', session.sessionId, currentParticipantId, {
+      mode: roundOpen ? { kind: 'open' } : { kind: 'songs', songCount: count }
+    });
+  }
+
 
   const currentParticipant = session?.participants.find(
     (participant) => participant.id === currentParticipantId
@@ -300,7 +316,7 @@ export function App() {
             <span className="eyebrow">VOCÊ ESTÁ NA SESSÃO</span>
             <h2>Olá, {currentParticipant?.name ?? 'cantor'} 👋</h2>
             <p className="muted">A sessão está sendo coordenada pelo anfitrião. A pesquisa e a fila de músicas serão o próximo módulo.</p>
-            <div className="connection-line"><span className={`connection-badge ${connection}`}>{connection === 'online' ? '🟢 conectado' : '🟡 conectando'}</span><span>{session.participants.length} participante(s)</span></div>
+            <div className="connection-line"><span className={`connection-badge ${connection}`}>{connection === 'online' ? '🟢 conectado' : '🟡 conectando'}</span><span>{session.participants.length} participante(s)</span><span>· rodada {session.roundMode.kind === 'open' ? 'aberta' : `${session.roundMode.songCount} música(s)`}</span></div>
           </div>
           <div className="panel">
             <div className="panel-heading">
@@ -358,6 +374,29 @@ export function App() {
             <div className="stat-card"><span>Na fila</span><strong>{session?.queueSize ?? 0}</strong></div>
             <div className="stat-card"><span>Rodada</span><strong>{session?.roundMode.kind === 'open' ? '∞' : session?.roundMode.songCount ?? 1}</strong></div>
           </div>
+          <div className="panel">
+            <div className="panel-heading">
+              <div><span className="eyebrow">RODADA DE AVALIAÇÃO</span><h3>Quantas músicas valem a nota final?</h3></div>
+              <span className="tag">CONTROLE DO HOST</span>
+            </div>
+            <div className="round-options">
+              <button className={`round-choice ${!roundOpen ? 'selected' : ''}`} onClick={() => setRoundOpen(false)}>
+                🎯 Quantidade definida
+              </button>
+              <button className={`round-choice ${roundOpen ? 'selected' : ''}`} onClick={() => setRoundOpen(true)}>
+                ♾️ Até o Host encerrar
+              </button>
+            </div>
+            {!roundOpen && (
+              <div className="round-count">
+                <input type="number" min="1" max="100" value={roundCount} onChange={(e) => setRoundCount(e.target.value)} />
+                <span>músicas</span>
+              </div>
+            )}
+            <button className="primary full" onClick={configureRound}>Salvar rodada</button>
+            <p className="muted small-note">A rodada atual é {session?.roundMode.kind === 'open' ? 'aberta, até o anfitrião encerrar' : `de ${session?.roundMode.songCount} música(s)`}. O cálculo de recomeços usa essa configuração.</p>
+          </div>
+
           <div className="panel">
             <div className="panel-heading">
               <div><span className="eyebrow">FILA COMPARTILHADA</span><h3>Adicione a primeira música</h3></div>
