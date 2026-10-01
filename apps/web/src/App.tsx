@@ -470,7 +470,7 @@ function SingerMicrophone({
   const previousToneKeyRef = useRef<string | null>(null);
   const toneWindowRef = useRef<{ start: number; end: number }>({ start: 15, end: 90 });
   const performanceStartRef = useRef<number | null>(null);
-  const previousPlaybackStartedAtRef = useRef<number | null>(null);
+  const previousPerformanceIdRef = useRef<string | null>(null);
   const currentPlayingRef = useRef<QueueEntry | null>(playing);
 
   currentPlayingRef.current = playing;
@@ -558,20 +558,20 @@ function SingerMicrophone({
   }, [playing?.id, playing?.status, session.queue]);
 
   useEffect(() => {
+    const performanceId = playing?.activePerformanceId ?? null;
+    const previousPerformanceId = previousPerformanceIdRef.current;
     const startedAt = playing?.playbackStartedAt ?? null;
-    const previousStartedAt = previousPlaybackStartedAtRef.current;
 
     if (
       playing
       && playing.ownerParticipantId === participantId
-      && startedAt
-      && previousStartedAt
-      && startedAt !== previousStartedAt
+      && performanceId
+      && performanceId !== previousPerformanceId
     ) {
       pitchSamplesRef.current = [];
       performanceRef.current = {
         queueEntryId: playing.id,
-        performanceId: playing.activePerformanceId ?? playing.id + '-' + startedAt
+        performanceId
       };
       performanceStartRef.current = startedAt;
       toneSuggestionCheckedRef.current = false;
@@ -580,8 +580,8 @@ function SingerMicrophone({
       setError('');
     }
 
-    previousPlaybackStartedAtRef.current = startedAt;
-  }, [playing?.id, playing?.playbackStartedAt, playing?.ownerParticipantId, participantId]);
+    previousPerformanceIdRef.current = performanceId;
+  }, [playing?.id, playing?.activePerformanceId, playing?.playbackStartedAt, playing?.ownerParticipantId, participantId]);
 
   useEffect(() => {
     if (!playing || playing.ownerParticipantId !== participantId || !active) {
@@ -725,7 +725,6 @@ function SingerMicrophone({
 
       const startedAt = playing.playbackStartedAt ?? Date.now();
       performanceStartRef.current = startedAt;
-      previousPlaybackStartedAtRef.current = startedAt;
       performanceRef.current = {
         queueEntryId: playing.id,
         performanceId: playing.activePerformanceId ?? playing.id + '-' + startedAt
