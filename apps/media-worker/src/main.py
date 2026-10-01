@@ -121,6 +121,7 @@ def search(
 ) -> SearchResponse:
     normalized_query = q.strip()
     music_search = f"https://music.youtube.com/search?q={quote_plus(normalized_query)}#songs"
+    using_music_catalog = True
 
     try:
         raw = run_command(
@@ -136,6 +137,7 @@ def search(
         payload = json.loads(raw)
         entries = payload.get("entries", [])
     except HTTPException:
+        using_music_catalog = False
         query = f"ytsearch{limit}:{normalized_query}"
         raw = run_command(
             [
@@ -163,7 +165,7 @@ def search(
         results.append(
             SearchResult(
                 source_id=str(source_id),
-                source="youtube-music" if str(source_url).startswith("https://music.youtube.com/") else "youtube",
+                source="youtube-music" if using_music_catalog else "youtube",
                 title=str(entry.get("title") or "Sem título"),
                 artist=(
                     ", ".join(str(item) for item in entry.get("artists", []) if item)
