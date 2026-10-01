@@ -54,9 +54,15 @@ function QueueList({
         return (
           <div className="queue-row" key={entry.id}>
             <div className="queue-position">{index + 1}</div>
-            <div className="queue-icon">🎵</div>
+            <div className="queue-icon">
+              {entry.thumbnailUrl ? (
+                <img src={entry.thumbnailUrl} alt="" loading="lazy" />
+              ) : (
+                <span aria-hidden="true">🎵</span>
+              )}
+            </div>
             <div className="queue-info">
-              <strong>{entry.title}</strong>
+              <strong title={entry.title}>{entry.title}</strong>
               <small>{entry.artist ?? 'Artista não informado'} · {owner?.name ?? 'Participante'}</small>
             </div>
             {entry.requestedKey && <span className="queue-key">Tom {entry.requestedKey}</span>}
@@ -255,7 +261,8 @@ export function App() {
         artist: result.artist,
         sourceId: result.sourceId,
         source: result.source,
-        sourceUrl: result.sourceUrl
+        sourceUrl: result.sourceUrl,
+        thumbnailUrl: result.thumbnailUrl
       });
       setSearchResults((items) => items.filter((item) => item.sourceId !== result.sourceId));
     } catch (err) {
@@ -426,7 +433,7 @@ export function App() {
                   <article className="search-result" key={result.sourceId}>
                     <div className="result-thumb">
                       {result.thumbnailUrl ? (
-                        <img src={result.thumbnailUrl} alt="" loading="lazy" />
+                        <img src={result.thumbnailUrl} alt={`Capa de ${result.title}`} loading="lazy" />
                       ) : (
                         <span aria-hidden="true">🎵</span>
                       )}
