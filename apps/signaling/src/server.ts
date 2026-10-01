@@ -144,6 +144,7 @@ wss.on('connection', (socket) => {
         const initialState = message.payload?.state ?? null;
         if (initialState) {
           ensureRoundState(initialState);
+          initialState.autoAdvance ??= true;
           initialState.restartCreditsByParticipant = {
             [message.senderId]: calculateRestartCredits(
               initialState.roundMode?.kind === 'open'
@@ -211,6 +212,7 @@ wss.on('connection', (socket) => {
         const currentState = session.state as any;
         if (currentState && Array.isArray(currentState.participants)) {
           ensureRoundState(currentState);
+          currentState.autoAdvance ??= true;
           currentState.restartCreditsByParticipant ??= {};
 
           if (client.role !== 'tv') {
