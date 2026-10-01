@@ -301,7 +301,9 @@ function QueueList({
 }
 
 export function App() {
-  const initialJoin = new URLSearchParams(window.location.search).get('join') === '1';
+  const initialParams = new URLSearchParams(window.location.search);
+  const initialJoin = initialParams.get('join') === '1';
+  const initialTv = initialParams.get('tv') === '1';
   const storedSession = getLocalSession();
 
   const [view, setView] = useState<View>(
@@ -330,7 +332,8 @@ export function App() {
     const params = new URLSearchParams(window.location.search);
     return {
       sessionId: params.get('session') ?? '',
-      hostId: params.get('host') ?? ''
+      hostId: params.get('host') ?? '',
+      tv: params.get('tv') === '1'
     };
   }, []);
 
@@ -413,7 +416,7 @@ export function App() {
           setSession(incoming);
           localStorage.setItem('karaokeai.session.v1', JSON.stringify(incoming));
           setCurrentParticipantId(participantId);
-          setView('participant');
+          setView(joinParams.tv ? 'tv' : 'participant');
         }
         setConnection('online');
       }
@@ -431,7 +434,8 @@ export function App() {
     try {
       await socket.connect();
       socket.sendRaw('session.join', joinParams.sessionId, participantId, {
-        name: trimmed,
+        name: joinParams.tv ? 'TV' : trimmed,
+        role: joinParams.tv ? 'tv' : 'participant',
         capabilities: detectCapabilities()
       });
       setTransport(socket);
@@ -688,7 +692,7 @@ export function App() {
         <header className="topbar"><div className="brand"><span className="brand-mark">🎤</span><div><strong>KaraokeAI</strong><small>entrar na sessão</small></div></div></header>
         <section className="panel narrow">
           <span className="eyebrow">ENTRAR NA SESSÃO</span>
-          <h2>Quem vai cantar?</h2>
+          <h2>{joinParams.tv ? 'Conectar a TV' : 'Quem vai cantar?'}</h2>
           {joinParams.sessionId ? (
             <>
               <p className="muted">Sessão: <strong>{joinParams.sessionId.slice(-8).toUpperCase()}</strong></p>
