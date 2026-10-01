@@ -128,7 +128,8 @@ button { border: 0; border-radius: 14px; min-height: 48px; padding: 0 18px; colo
 .queue-row { display: grid; grid-template-columns: 28px 34px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 10px 6px; border-top: 1px solid #20263e; }
 .queue-row:first-child { border-top: 0; }
 .queue-position { color: #6f7896; font-size: 12px; text-align: center; font-weight: 800; }
-.queue-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 11px; background: #181e34; }
+.queue-icon { width: 34px; height: 34px; display: grid; place-items: center; overflow: hidden; border-radius: 11px; background: #181e34; }
+.queue-icon img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .queue-info { min-width: 0; }
 .queue-info strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .queue-info small { display: block; margin-top: 3px; color: #7f88a4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
