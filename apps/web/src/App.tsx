@@ -302,6 +302,11 @@ function QueueList({
               </div>
             )}
             {entry.status === 'ready' && <span className="queue-status ready">✅ Pronta{entry.assetId ? ' · Asset' : ''}</span>}
+            {entry.status === 'completed' && (
+              <span className="queue-status ready">
+                ✅ Finalizada{entry.score ? ` · ${entry.score.overall}/100` : ''}
+              </span>
+            )}
             {entry.status === 'cancelled' && <span className="queue-status cancelled">Cancelada</span>}
             {canRemove && (
               <button className="queue-remove" onClick={() => onRemove(entry.id)} aria-label={`Remover ${entry.title}`}>
@@ -647,6 +652,9 @@ function TvStage({
   signals: Array<{ id?: string; payload?: { command?: string; data?: WebRtcSignal } }>;
 }) {
   const playing = session.queue.find((entry) => entry.status === 'playing') ?? null;
+  const lastCompleted = [...session.queue]
+    .reverse()
+    .find((entry) => entry.status === 'completed' && entry.score);
   const upcoming = session.queue.filter(
     (entry) => entry.status === 'ready' || entry.status === 'playing' || entry.status === 'preparing'
   );
@@ -1025,6 +1033,18 @@ function TvStage({
               <span className="eyebrow">PALCO PRONTO</span>
               <h1>Aguardando a próxima música</h1>
               <p>O anfitrião inicia a apresentação pelo painel de controle.</p>
+              {lastCompleted?.score && (
+                <div className="tv-result-card">
+                  <span className="eyebrow">RESULTADO DA ÚLTIMA MÚSICA</span>
+                  <strong>{lastCompleted.score.overall}<small>/100</small></strong>
+                  <div>
+                    <span>🎵 {lastCompleted.score.pitch}</span>
+                    <span>🥁 {lastCompleted.score.rhythm}</span>
+                    <span>🎯 {lastCompleted.score.precision}</span>
+                    <span>〽️ {lastCompleted.score.stability}</span>
+                  </div>
+                </div>
+              )}
               {!playing && audioEnabled && <span className="tv-audio-ready">🔊 Áudio pronto</span>}
             </div>
           )}
