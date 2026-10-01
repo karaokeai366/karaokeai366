@@ -304,3 +304,5 @@ button { border: 0; border-radius: 14px; min-height: 48px; padding: 0 18px; colo
 .round-preset { min-width: 48px; min-height: 36px; padding: 0 10px; border: 1px solid #29314d; border-radius: 10px; background: #10162a; color: #8992ad; font-size: 11px; font-weight: 800; }
 .round-preset:hover { border-color: #3d4770; color: #c7cde0; }
 .round-preset.selected { border-color: #6672ee; background: #1a2140; color: #e3e6ff; }
+
+.round-preset-custom { display: inline-flex; align-items: center; justify-content: center; min-width: 155px; color: #727b98; cursor: default; }
