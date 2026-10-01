@@ -9,16 +9,22 @@ type RawMessage = {
 
 export class WebSocketTransport {
   private socket: WebSocket | null = null;
+  private intentionalClose = false;
   private readonly listeners = new Set<(message: RawMessage) => void>();
+  private readonly connectionListeners = new Set<(state: 'open' | 'close', intentional: boolean) => void>();
 
   constructor(private readonly url: string) {}
 
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
+      this.intentionalClose = false;
       const socket = new WebSocket(this.url);
       this.socket = socket;
 
-      socket.onopen = () => resolve();
+      socket.onopen = () => {
+        for (const listener of this.connectionListeners) listener('open', false);
+        resolve();
+      };
       socket.onerror = () => reject(new Error('Não foi possível conectar ao serviço de sessão.'));
       socket.onmessage = (event) => {
         try {
@@ -30,11 +36,15 @@ export class WebSocketTransport {
       };
       socket.onclose = () => {
         this.socket = null;
+        for (const listener of this.connectionListeners) {
+          listener('close', this.intentionalClose);
+        }
       };
     });
   }
 
   disconnect(): void {
+    this.intentionalClose = true;
     this.socket?.close();
     this.socket = null;
   }
@@ -66,3 +76,8 @@ export class WebSocketTransport {
     return () => this.listeners.delete(handler);
   }
 }
+
+  subscribeConnection(handler: (state: 'open' | 'close', intentional: boolean) => void): () => void {
+    this.connectionListeners.add(handler);
+    return () => this.connectionListeners.delete(handler);
+  }
