@@ -1223,6 +1223,68 @@ wss.on('connection', (socket) => {
         break;
       }
 
+      case 'host.transfer': {
+        const client = clientsBySocket.get(socket);
+        if (!client) {
+          reject(socket, 'Conecte-se a uma sessão primeiro.');
+          return;
+        }
+
+        const session = sessions.get(client.sessionId);
+        if (!session) {
+          reject(socket, 'Sessão não encontrada.');
+          return;
+        }
+
+        if (client.participantId !== session.hostParticipantId) {
+          reject(socket, 'Somente o Host atual pode transferir a função de Host.');
+          return;
+        }
+
+        const targetParticipantId = String(
+          message.payload?.targetParticipantId ?? ''
+        ).trim();
+
+        const currentState = session.state as any;
+        const target = currentState?.participants?.find(
+          (participant: any) => participant.id === targetParticipantId
+        );
+
+        if (!target || target.role === 'tv') {
+          reject(socket, 'O participante escolhido não pode assumir o Host.');
+          return;
+        }
+
+        if (target.online === false || !session.clients.has(targetParticipantId)) {
+          reject(socket, 'O participante escolhido está offline.');
+          return;
+        }
+
+        const previousHostId = session.hostParticipantId;
+        session.hostParticipantId = targetParticipantId;
+
+        const previousHostClient = session.clients.get(previousHostId);
+        const targetClient = session.clients.get(targetParticipantId);
+
+        if (previousHostClient) previousHostClient.role = 'participant';
+        if (targetClient) targetClient.role = 'host';
+
+        currentState.hostParticipantId = targetParticipantId;
+        currentState.participants = currentState.participants.map((participant: any) => {
+          if (participant.id === previousHostId) {
+            return { ...participant, role: 'participant' };
+          }
+          if (participant.id === targetParticipantId) {
+            return { ...participant, role: 'host' };
+          }
+          return participant;
+        });
+
+        session.state = currentState;
+        broadcast(session, 'session.state', { state: session.state });
+        break;
+      }
+
       case 'session.state.set': {
         const client = clientsBySocket.get(socket);
         if (!client) {
