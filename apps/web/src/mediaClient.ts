@@ -80,5 +80,11 @@ export async function startSongPreparation(source: SongSearchResult, mediaKind: 
 
 
 export async function getSongPreparationStatus(jobId: string): Promise<MediaPrepareStatus> {
-  return request<MediaPrepareStatus>(`/prepare/${encodeURIComponent(jobId)}`);
+  const status = await request<MediaPrepareStatus>(`/prepare/${encodeURIComponent(jobId)}`);
+
+  if (status.manifestUrl) {
+    status.manifestUrl = new URL(status.manifestUrl, `${MEDIA_WORKER_URL}/`).toString();
+  }
+
+  return status;
 }
