@@ -447,8 +447,6 @@ function SingerMicrophone({
   const streamRef = useRef<MediaStream | null>(null);
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
   const handledSignalsRef = useRef(new Set<string>());
-  const autoFinishSentRef = useRef<string | null>(null);
-
   const pitchSamplesRef = useRef<PitchSample[]>([]);
   const referenceNotesRef = useRef<MelodyReferenceNote[]>([]);
   const analysisFrameRef = useRef<number | null>(null);
@@ -1080,6 +1078,7 @@ function TvStage({
   const voiceSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
   const handledSignalsRef = useRef(new Set<string>());
+  const autoFinishSentRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!transport) return;
