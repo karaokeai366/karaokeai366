@@ -85,3 +85,26 @@ button { border: 0; border-radius: 14px; min-height: 48px; padding: 0 18px; colo
   .topbar { height: 68px; }
   .session-pill { display: none; }
 }
+
+.connection-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-top: 14px;
+  padding: 7px 10px;
+  border: 1px solid #30385a;
+  border-radius: 999px;
+  color: #b9c1df;
+  background: #0d1220;
+  font-size: 11px;
+  font-weight: 800;
+}
+.connection-badge.online { border-color: #2c5a49; color: #8be4b6; }
+.connection-badge.connecting { border-color: #5d532e; color: #e5d68d; }
+.connection-badge.error { border-color: #653b43; color: #ef9ba6; }
+.connecting-text { margin-top: 14px; color: #969eb8; font-size: 13px; }
+.global-error { margin-top: 14px; padding: 12px 14px; border: 1px solid #5f3941; border-radius: 14px; background: #241116; color: #efadb5; line-height: 1.5; }
+.reconnect-button { margin-top: 12px; }
+.one-column { grid-template-columns: 1fr; }
+.participant-hero { min-height: 220px; display: flex; flex-direction: column; justify-content: center; }
+.connection-line { display: flex; align-items: center; gap: 10px; margin-top: 10px; color: #8992ad; font-size: 13px; }
