@@ -22,12 +22,16 @@ export interface LyricsResult {
 }
 
 export interface SongAssetManifest {
+  schemaVersion: number;
   assetId: string;
+  createdAt: string;
   source: SongSearchResult;
   mediaKind: MediaKind;
   durationSeconds?: number;
   originalKey?: string;
   selectedKey?: string;
+  bpm?: number | null;
+  integrity?: Record<string, string>;
   files: {
     original?: string;
     instrumental?: string;
@@ -36,6 +40,7 @@ export interface SongAssetManifest {
     lyricsJson?: string;
     melodyJson?: string;
     cover?: string;
+    manifest?: string;
   };
   preparation: {
     download: 'pending' | 'ready' | 'error';
