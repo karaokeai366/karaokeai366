@@ -333,29 +333,95 @@ function selectNextQueueEntry(
   return differentSinger ?? fairest[0] ?? candidates[0];
 }
 
-const singerPreloadCache = new Map<string, Promise<void>>();
+interface PreloadedSingerAssets {
+  manifest: import('../../../packages/media/src/song').SongAssetManifest;
+  lyricsLines: Array<{ start: number; text: string }>;
+  referenceNotes: MelodyReferenceNote[];
+  instrumentalUrl: string | null;
+}
 
-function preloadSingerAssets(entry: QueueEntry): Promise<void> {
-  if (!entry.manifestUrl) return Promise.reject(new Error('SongAsset ainda não disponível.'));
+const singerPreloadCache = new Map<string, Promise<PreloadedSingerAssets>>();
 
+async function loadSingerAssets(entry: QueueEntry): Promise<PreloadedSingerAssets> {
+  if (!entry.manifestUrl) {
+    throw new Error('SongAsset ainda não disponível.');
+  }
+
+  const manifest = await getSongAssetManifest(entry.manifestUrl);
+
+  const lyricsLines: Array<{ start: number; text: string }> = [];
+  const lyricsUrl = resolveSongAssetUrl(entry.manifestUrl, manifest.files.lyricsJson);
+
+  if (lyricsUrl) {
+    const response = await fetch(lyricsUrl, { cache: 'force-cache' });
+    if (response.ok) {
+      const lyrics = await response.json();
+      if (Array.isArray(lyrics?.lines)) {
+        lyricsLines.push(
+          ...lyrics.lines.filter((line: unknown): line is { start: number; text: string } =>
+            Boolean(line)
+            && typeof (line as { start?: unknown }).start === 'number'
+            && typeof (line as { text?: unknown }).text === 'string'
+          )
+        );
+      }
+    }
+  }
+
+  const referenceNotes: MelodyReferenceNote[] = [];
+  const melodyUrl = resolveSongAssetUrl(entry.manifestUrl, manifest.files.melodyJson);
+
+  if (melodyUrl) {
+    const response = await fetch(melodyUrl, { cache: 'force-cache' });
+    if (response.ok) {
+      const melody = await response.json();
+      if (Array.isArray(melody?.notes)) {
+        referenceNotes.push(
+          ...melody.notes
+            .filter((note: unknown): note is MelodyReferenceNote =>
+              Boolean(note)
+              && typeof (note as { start?: unknown }).start === 'number'
+              && typeof (note as { end?: unknown }).end === 'number'
+              && typeof (note as { midi?: unknown }).midi === 'number'
+            )
+            .map((note: MelodyReferenceNote) => ({
+              start: note.start,
+              end: note.end,
+              midi: note.midi,
+              confidence: note.confidence
+            }))
+        );
+      }
+    }
+  }
+
+  const instrumentalUrl = resolveSongAssetUrl(
+    entry.manifestUrl,
+    manifest.files.instrumental
+  );
+
+  if (instrumentalUrl) {
+    const response = await fetch(instrumentalUrl, { cache: 'force-cache' });
+    if (!response.ok) {
+      throw new Error(`Falha ao pré-carregar o instrumental (${response.status}).`);
+    }
+  }
+
+  lyricsLines.sort((left, right) => left.start - right.start);
+
+  return {
+    manifest,
+    lyricsLines,
+    referenceNotes,
+    instrumentalUrl
+  };
+}
+
+function preloadSingerAssets(entry: QueueEntry): Promise<PreloadedSingerAssets> {
   const existing = singerPreloadCache.get(entry.id);
   if (existing) return existing;
 
-  const job = (async () => {
-    const manifest = await getSongAssetManifest(entry.manifestUrl!);
-    const urls = [
-      resolveSongAssetUrl(entry.manifestUrl!, manifest.files.lyricsJson),
-      resolveSongAssetUrl(entry.manifestUrl!, manifest.files.melodyJson),
-      resolveSongAssetUrl(entry.manifestUrl!, manifest.files.instrumental)
-    ].filter((value): value is string => Boolean(value));
-
-    await Promise.all(
-      urls.map((url) => fetch(url, { cache: 'force-cache' }).then((response) => {
-        if (!response.ok) throw new Error(`Falha ao pré-carregar o recurso (${response.status}).`);
-      }))
-    );
-  })();
-
+  const job = loadSingerAssets(entry);
   singerPreloadCache.set(entry.id, job);
   job.catch(() => {
     singerPreloadCache.delete(entry.id);
@@ -852,58 +918,10 @@ function SingerMicrophone({
       let referenceNotes: MelodyReferenceNote[] = [];
 
       if (playing.manifestUrl) {
-        const manifest = await getSongAssetManifest(playing.manifestUrl);
-
-        const lyricsUrl = resolveSongAssetUrl(
-          playing.manifestUrl,
-          manifest.files.lyricsJson
-        );
-
-        if (lyricsUrl) {
-          const lyricsResponse = await fetch(lyricsUrl);
-          if (lyricsResponse.ok) {
-            const lyrics = await lyricsResponse.json();
-
-            if (Array.isArray(lyrics?.lines)) {
-              const lyricLines = lyrics.lines
-                .filter((line: unknown): line is { start: number; text: string } =>
-                  Boolean(line)
-                  && typeof (line as { start?: unknown }).start === 'number'
-                  && typeof (line as { text?: unknown }).text === 'string'
-                );
-              const chorusWindow = findLikelyChorusWindow(lyricLines);
-              if (chorusWindow) toneWindowRef.current = chorusWindow;
-            }
-          }
-        }
-
-        const melodyUrl = resolveSongAssetUrl(
-          playing.manifestUrl,
-          manifest.files.melodyJson
-        );
-
-        if (melodyUrl) {
-          const melodyResponse = await fetch(melodyUrl);
-          if (melodyResponse.ok) {
-            const melody = await melodyResponse.json();
-
-            if (Array.isArray(melody?.notes)) {
-              referenceNotes = melody.notes
-                .filter((note: unknown): note is MelodyReferenceNote =>
-                  Boolean(note)
-                  && typeof (note as { start?: unknown }).start === 'number'
-                  && typeof (note as { end?: unknown }).end === 'number'
-                  && typeof (note as { midi?: unknown }).midi === 'number'
-                )
-                .map((note: MelodyReferenceNote) => ({
-                  start: note.start,
-                  end: note.end,
-                  midi: note.midi,
-                  confidence: note.confidence
-                }));
-            }
-          }
-        }
+        const preloaded = await preloadSingerAssets(playing);
+        referenceNotes = preloaded.referenceNotes;
+        const chorusWindow = findLikelyChorusWindow(preloaded.lyricsLines);
+        if (chorusWindow) toneWindowRef.current = chorusWindow;
       }
 
       pitchSamplesRef.current = [];
