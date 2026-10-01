@@ -43,6 +43,14 @@ function isValidId(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= 128;
 }
 
+function calculateRestartCredits(songCount: number | 'open'): number {
+  if (songCount === 'open') return 1;
+  const count = Math.max(1, Math.floor(songCount));
+  if (count <= 2) return 1;
+  if (count <= 4) return 2;
+  return Math.max(1, Math.floor(count * 0.3));
+}
+
 const wss = new WebSocketServer({ port });
 
 wss.on('connection', (socket) => {
@@ -73,10 +81,21 @@ wss.on('connection', (socket) => {
           return;
         }
 
+        const initialState = message.payload?.state ?? null;
+        if (initialState) {
+          initialState.restartCreditsByParticipant = {
+            [message.senderId]: calculateRestartCredits(
+              initialState.roundMode?.kind === 'open'
+                ? 'open'
+                : initialState.roundMode?.songCount ?? 1
+            )
+          };
+        }
+
         const session: Session = {
           sessionId: message.sessionId,
           hostParticipantId: message.senderId,
-          state: message.payload?.state ?? null,
+          state: initialState,
           clients: new Map()
         };
 
@@ -130,6 +149,17 @@ wss.on('connection', (socket) => {
 
         const currentState = session.state as any;
         if (currentState && Array.isArray(currentState.participants)) {
+          currentState.restartCreditsByParticipant ??= {};
+
+          if (client.role !== 'tv') {
+            currentState.restartCreditsByParticipant[client.participantId] =
+              calculateRestartCredits(
+                currentState.roundMode?.kind === 'open'
+                  ? 'open'
+                  : currentState.roundMode?.songCount ?? 1
+              );
+          }
+
           currentState.participants = [
             ...currentState.participants,
             {
@@ -240,6 +270,83 @@ wss.on('connection', (socket) => {
         break;
       }
 
+      case 'queue.restart': {
+        const client = clientsBySocket.get(socket);
+        if (!client) {
+          reject(socket, 'Conecte-se a uma sessão primeiro.');
+          return;
+        }
+
+        const session = sessions.get(client.sessionId);
+        if (!session) {
+          reject(socket, 'Sessão não encontrada.');
+          return;
+        }
+
+        const currentState = session.state as any;
+        const queue = Array.isArray(currentState?.queue) ? currentState.queue : [];
+        const queueEntryId = String(message.payload?.queueEntryId ?? '');
+        const entry = queue.find((item: any) => item.id === queueEntryId);
+
+        if (!entry) {
+          reject(socket, 'Música não encontrada na fila.');
+          return;
+        }
+
+        if (entry.ownerParticipantId !== client.participantId) {
+          reject(socket, 'Somente o cantor pode recomeçar a própria apresentação.');
+          return;
+        }
+
+        if (entry.status !== 'playing') {
+          reject(socket, 'Só é possível recomeçar uma música em execução.');
+          return;
+        }
+
+        if (!Number.isFinite(entry.durationSeconds) || entry.durationSeconds <= 0
+          || !Number.isFinite(entry.playbackStartedAt)) {
+          reject(socket, 'A duração da música não está disponível para validar o limite de 50%.');
+          return;
+        }
+
+        const elapsedSeconds = Math.max(
+          0,
+          (Date.now() - Number(entry.playbackStartedAt)) / 1000
+        );
+        const progressPercent = Math.min(
+          100,
+          (elapsedSeconds / Number(entry.durationSeconds)) * 100
+        );
+        const credits = Number(
+          currentState.restartCreditsByParticipant?.[client.participantId] ?? 0
+        );
+
+        if (progressPercent > 50) {
+          reject(socket, 'O recomeço só pode ser usado até 50% da música.');
+          return;
+        }
+
+        if (credits <= 0) {
+          reject(socket, 'Você não possui mais créditos de recomeço nesta rodada.');
+          return;
+        }
+
+        currentState.restartCreditsByParticipant[client.participantId] = credits - 1;
+        currentState.queue = queue.map((item: any) =>
+          item.id === queueEntryId
+            ? {
+                ...item,
+                playbackStartedAt: Date.now(),
+                score: undefined
+              }
+            : item
+        );
+
+        session.state = currentState;
+        broadcast(session, 'session.state', { state: session.state });
+        break;
+      }
+
       case 'performance.complete': {
         const client = clientsBySocket.get(socket);
         if (!client) { reject(socket, 'Conecte-se a uma sessão primeiro.'); return; }
@@ -317,6 +424,16 @@ wss.on('connection', (socket) => {
           ? { kind: 'open' }
           : { kind: 'songs', songCount: Math.floor(mode.songCount) };
 
+        currentState.restartCreditsByParticipant = {};
+        for (const participant of currentState.participants ?? []) {
+          if (participant.role !== 'tv') {
+            currentState.restartCreditsByParticipant[participant.id] =
+              calculateRestartCredits(
+                mode.kind === 'open' ? 'open' : Math.floor(mode.songCount)
+              );
+          }
+        }
+
         session.state = currentState;
         broadcast(session, 'session.state', { state: session.state });
         break;
@@ -358,6 +475,9 @@ wss.on('connection', (socket) => {
           sourceUrl: String(message.payload?.sourceUrl ?? '').trim().slice(0, 1000) || undefined,
           thumbnailUrl: String(message.payload?.thumbnailUrl ?? '').trim().slice(0, 2000) || undefined,
           requestedKey: String(message.payload?.requestedKey ?? '').trim().slice(0, 8) || undefined,
+          durationSeconds: Number.isFinite(message.payload?.durationSeconds)
+            ? Math.max(0, Math.min(3600, Number(message.payload.durationSeconds)))
+            : undefined,
           addedAt: Date.now(),
           status: 'queued'
         };
@@ -487,6 +607,9 @@ wss.on('connection', (socket) => {
       currentState.participants = currentState.participants.filter(
         (participant: any) => participant.id !== client.participantId
       );
+      if (currentState.restartCreditsByParticipant) {
+        delete currentState.restartCreditsByParticipant[client.participantId];
+      }
       session.state = currentState;
       broadcast(session, 'session.state', { state: session.state });
     }
