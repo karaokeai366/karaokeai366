@@ -13,8 +13,10 @@ type Session = {
   hostParticipantId: string;
   state: unknown;
   clients: Map<string, Client>;
+  cleanupTimer?: ReturnType<typeof setTimeout>;
 };
 
+const SESSION_RETENTION_MS = 10 * 60 * 1000;
 const port = Number(process.env.PORT ?? 8787);
 const sessions = new Map<string, Session>();
 const clientsBySocket = new Map<WebSocket, Client>();
@@ -265,6 +267,80 @@ wss.on('connection', (socket) => {
     }
 
     switch (message.type) {
+      case 'session.reconnect': {
+        if (!isValidId(message.sessionId) || !isValidId(message.senderId)) {
+          reject(socket, 'sessionId e senderId são obrigatórios.');
+          return;
+        }
+
+        const session = sessions.get(message.sessionId);
+        if (!session) {
+          reject(socket, 'Sessão não encontrada ou expirada.');
+          return;
+        }
+
+        const currentState = session.state as any;
+        const participant = currentState?.participants?.find(
+          (item: any) => item.id === message.senderId
+        );
+
+        if (!participant) {
+          reject(socket, 'Participante não encontrado nesta sessão.');
+          return;
+        }
+
+        const requestedRole = message.payload?.role;
+        if (
+          requestedRole !== undefined
+          && requestedRole !== participant.role
+        ) {
+          reject(socket, 'O papel deste participante não corresponde ao registrado na sessão.');
+          return;
+        }
+
+        const existingClient = session.clients.get(message.senderId);
+        if (existingClient?.socket !== socket) {
+          try {
+            existingClient?.socket.close();
+          } catch {
+            // Ignore an already closed socket.
+          }
+          session.clients.delete(message.senderId);
+        }
+
+        if (session.cleanupTimer) {
+          clearTimeout(session.cleanupTimer);
+          session.cleanupTimer = undefined;
+        }
+
+        const client: Client = {
+          socket,
+          sessionId: session.sessionId,
+          participantId: message.senderId,
+          role: participant.role
+        };
+
+        session.clients.set(client.participantId, client);
+        clientsBySocket.set(socket, client);
+
+        currentState.participants = currentState.participants.map((item: any) =>
+          item.id === participant.id
+            ? { ...item, online: true }
+            : item
+        );
+
+        session.state = currentState;
+
+        send(socket, 'session.reconnected', {
+          sessionId: session.sessionId,
+          hostParticipantId: session.hostParticipantId,
+          state: session.state
+        });
+
+        broadcast(session, 'session.state', { state: session.state }, socket);
+        break;
+      }
+
       case 'session.create': {
         if (!isValidId(message.sessionId) || !isValidId(message.senderId)) {
           reject(socket, 'sessionId e senderId são obrigatórios.');
@@ -1217,21 +1293,20 @@ wss.on('connection', (socket) => {
     const session = sessions.get(client.sessionId);
     if (!session) return;
 
-    session.clients.delete(client.participantId);
-
-    if (session.clients.size === 0) {
-      sessions.delete(session.sessionId);
+    if (session.clients.get(client.participantId)?.socket !== socket) {
       return;
     }
 
+    session.clients.delete(client.participantId);
+
     const currentState = session.state as any;
     if (currentState && Array.isArray(currentState.participants)) {
-      currentState.participants = currentState.participants.filter(
-        (participant: any) => participant.id !== client.participantId
+      currentState.participants = currentState.participants.map(
+        (participant: any) =>
+          participant.id === client.participantId
+            ? { ...participant, online: false }
+            : participant
       );
-      if (currentState.restartCreditsByParticipant) {
-        delete currentState.restartCreditsByParticipant[client.participantId];
-      }
       session.state = currentState;
       broadcast(session, 'session.state', { state: session.state });
     }
@@ -1245,6 +1320,14 @@ wss.on('connection', (socket) => {
       broadcast(session, 'host.disconnected', {
         participantId: client.participantId
       });
+    }
+
+    if (session.clients.size === 0 && !session.cleanupTimer) {
+      session.cleanupTimer = setTimeout(() => {
+        if (session.clients.size === 0) {
+          sessions.delete(session.sessionId);
+        }
+      }, SESSION_RETENTION_MS);
     }
   });
 });
