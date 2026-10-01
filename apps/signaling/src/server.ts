@@ -1399,6 +1399,36 @@ wss.on('connection', (socket) => {
         break;
       }
 
+      case 'session.settings.set': {
+        const client = clientsBySocket.get(socket);
+        if (!client) {
+          reject(socket, 'Conecte-se a uma sessão primeiro.');
+          return;
+        }
+
+        const session = sessions.get(client.sessionId);
+        if (!session || client.participantId !== session.hostParticipantId) {
+          reject(socket, 'Somente o Host pode alterar as configurações da sessão.');
+          return;
+        }
+
+        const currentState = session.state as any;
+        const autoAdvance = message.payload?.autoAdvance;
+
+        if (autoAdvance !== undefined && typeof autoAdvance !== 'boolean') {
+          reject(socket, 'Configuração de avanço automático inválida.');
+          return;
+        }
+
+        if (typeof autoAdvance === 'boolean') {
+          currentState.autoAdvance = autoAdvance;
+        }
+
+        session.state = currentState;
+        broadcast(session, 'session.state', { state: session.state });
+        break;
+      }
+
       case 'session.state.set': {
         const client = clientsBySocket.get(socket);
         if (!client) {
