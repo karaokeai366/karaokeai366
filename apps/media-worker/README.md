@@ -36,6 +36,20 @@ Lyrics may be missing when no matching catalog entry is available. The core prep
 - cloud media library;
 - it does not bundle copyrighted media in the repository.
 
+## Key transposition
+
+After a SongAsset is ready, the owner or Host can select another musical key before playback.
+
+The worker exposes `POST /transpose-key`. The selected target is normalized to a pitch class and the shortest semitone interval from the detected original key is used.
+
+To avoid cumulative quality loss, the worker stores:
+- `instrumental.base.wav` as the immutable transposition source;
+- `melody.base.json` as the immutable reference source.
+
+Each new target key is generated from those base artifacts, and the manifest updates `selectedKey` plus the integrity hashes.
+
+The instrumental keeps its duration while its pitch is shifted. The melody reference receives the exact same semitone offset, so scoring compares the singer against the reference in the selected key.
+
 ## Browser microphone requirement
 
 The browser microphone path uses `getUserMedia()` and therefore requires a secure context. In the web/PWA build, use HTTPS or a local loopback origin such as `localhost`; ordinary HTTP over a LAN IP is not sufficient for microphone permission in browsers.
