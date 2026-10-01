@@ -2133,9 +2133,6 @@ export function App() {
   const [roundCount, setRoundCount] = useState('1');
   const [roundOpen, setRoundOpen] = useState(false);
   const [changingKeyId, setChangingKeyId] = useState<string | null>(null);
-  const previousQueueSnapshotRef = useRef<QueueEntry[]>(session?.queue ?? []);
-  const pendingAutoAdvanceRef = useRef<string | null>(null);
-  const autoAdvanceTimerRef = useRef<number | null>(null);
   const [webrtcSignals, setWebRtcSignals] = useState<Array<{ id?: string; payload?: { command?: string; data?: WebRtcSignal } }>>([]);
 
 
@@ -2569,72 +2566,6 @@ export function App() {
     });
   }
 
-  useEffect(() => {
-    if (
-      !session
-      || session.hostParticipantId !== currentParticipantId
-    ) {
-      return;
-    }
-
-    const previous = previousQueueSnapshotRef.current;
-    for (const entry of session.queue) {
-      const before = previous.find((item) => item.id === entry.id);
-      if (before?.status === 'playing' && entry.status === 'completed') {
-        pendingAutoAdvanceRef.current = entry.id;
-        break;
-      }
-    }
-
-    previousQueueSnapshotRef.current = session.queue;
-  }, [session?.queue, session?.hostParticipantId, currentParticipantId]);
-
-  useEffect(() => {
-    if (autoAdvanceTimerRef.current !== null) {
-      window.clearTimeout(autoAdvanceTimerRef.current);
-      autoAdvanceTimerRef.current = null;
-    }
-
-    if (
-      !session
-      || session.hostParticipantId !== currentParticipantId
-      || session.autoAdvance === false
-      || !pendingAutoAdvanceRef.current
-      || session.queue.some((entry) => entry.status === 'playing')
-    ) {
-      return;
-    }
-
-    const completedEntry = session.queue.find(
-      (entry) => entry.id === pendingAutoAdvanceRef.current
-    );
-
-    if (!completedEntry?.score) {
-      return;
-    }
-
-    autoAdvanceTimerRef.current = window.setTimeout(() => {
-      if (!pendingAutoAdvanceRef.current) return;
-      const stillCurrent = session.queue.find(
-        (entry) => entry.id === pendingAutoAdvanceRef.current
-      );
-
-      if (stillCurrent?.status === 'completed' && stillCurrent.score) {
-        const advanced = startNextSong();
-        if (advanced) {
-          pendingAutoAdvanceRef.current = null;
-        }
-      }
-    }, 3500);
-
-    return () => {
-      if (autoAdvanceTimerRef.current !== null) {
-        window.clearTimeout(autoAdvanceTimerRef.current);
-        autoAdvanceTimerRef.current = null;
-      }
-    };
-  }, [session, currentParticipantId]);
-
   function setQueueStatus(queueEntryId: string, status: 'playing' | 'completed') {
     if (!session || !transport || session.hostParticipantId !== currentParticipantId) return;
     transport.sendRaw('queue.status.set', session.sessionId, currentParticipantId, {
@@ -2987,7 +2918,7 @@ export function App() {
                 <span className="eyebrow">▶ CONTROLE DO PALCO</span>
                 <h3>Avanço automático</h3>
                 <p className="muted small-note">
-                  Depois da nota oficial, a próxima música começa automaticamente após alguns segundos.
+                  Depois da nota oficial, o servidor agenda a próxima música automaticamente após alguns segundos, mesmo que o Host esteja reconectando.
                 </p>
               </div>
               <button
