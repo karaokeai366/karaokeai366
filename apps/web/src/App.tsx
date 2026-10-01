@@ -13,6 +13,8 @@ import { WebSocketTransport } from './wsTransport';
 import { getSongAssetManifest, getSongPreparationStatus, resolveSongAssetUrl, searchSongs, startSongPreparation } from './mediaClient';
 import type { SongSearchResult } from '../../../packages/media/src/song';
 import { getWebRtcConfiguration, isWebRtcSupported, type WebRtcSignal } from './webrtc';
+import { estimatePitch, pushPitchSample } from './pitchDetector';
+import { scorePerformance, type MelodyReferenceNote, type PerformanceScore, type PitchSample } from '../../../packages/session/src/scoring';
 
 type View = 'home' | 'host' | 'join' | 'participant' | 'tv';
 
