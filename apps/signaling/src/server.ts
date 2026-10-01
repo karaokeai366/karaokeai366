@@ -288,6 +288,7 @@ wss.on('connection', (socket) => {
           sourceId: String(message.payload?.sourceId ?? '').trim().slice(0, 200) || undefined,
           source: String(message.payload?.source ?? '').trim().slice(0, 80) || undefined,
           sourceUrl: String(message.payload?.sourceUrl ?? '').trim().slice(0, 1000) || undefined,
+          thumbnailUrl: String(message.payload?.thumbnailUrl ?? '').trim().slice(0, 2000) || undefined,
           requestedKey: String(message.payload?.requestedKey ?? '').trim().slice(0, 8) || undefined,
           addedAt: Date.now(),
           status: 'queued'
