@@ -2817,6 +2817,20 @@ export function App() {
                   <div className="avatar">{participant.name.slice(0, 1).toUpperCase()}</div>
                   <div className="person-info"><strong>{participant.name}</strong><small>{participant.role === 'host' ? 'Anfitrião' : 'Participante'} · {participant.online ? 'online' : 'offline'}</small></div>
                   <div className="capability"><span>{Math.round(participant.capabilities.measuredScore)}</span><small>{scoreLabel(participant.capabilities.measuredScore)}</small></div>
+                  {session.hostParticipantId === currentParticipantId && participant.id !== currentParticipantId && participant.role !== 'tv' && (
+                    <button
+                      type="button"
+                      className="link-button transfer-host-button"
+                      onClick={() => {
+                        if (!window.confirm('Transferir o Host para ' + participant.name + '?')) return;
+                        transport?.sendRaw('host.transfer', session.sessionId, currentParticipantId, {
+                          targetParticipantId: participant.id
+                        });
+                      }}
+                    >
+                      Passar Host
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
