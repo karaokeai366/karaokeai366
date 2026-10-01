@@ -42,6 +42,7 @@ export interface QueueEntry {
   preparationProgress?: number;
   preparationMessage?: string;
   playbackStartedAt?: number;
+  durationSeconds?: number;
   score?: PerformanceScore;
   addedAt: number;
   status: 'queued' | 'preparing' | 'ready' | 'playing' | 'completed' | 'cancelled';
@@ -54,6 +55,7 @@ export interface SessionState {
   participants: Participant[];
   queue: QueueEntry[];
   queueSize: number;
+  restartCreditsByParticipant?: Record<string, number>;
   roundMode: RoundMode;
   status: 'lobby' | 'playing' | 'finished';
 }
