@@ -325,3 +325,8 @@ button { border: 0; border-radius: 14px; min-height: 48px; padding: 0 18px; colo
 .tv-round-participants { display: grid; gap: 7px; margin: 14px auto 0; max-width: 520px; text-align: left; }
 .tv-round-participant { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 11px; border: 1px solid #232d48; border-radius: 12px; background: #0b1120; color: #8f98b2; font-size: 11px; }
 .tv-round-participant strong { color: #cfd5e9; font-size: 12px; }
+
+.auto-advance-panel { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.toggle-button { min-width: 100px; min-height: 42px; border: 1px solid #343d5f; border-radius: 12px; background: #11172a; color: #8d96af; font-size: 11px; font-weight: 900; }
+.toggle-button.selected { border-color: #4c5aa0; background: #1a2243; color: #d8dcff; }
+@media (max-width: 620px) { .auto-advance-panel { align-items: stretch; flex-direction: column; } }
