@@ -488,6 +488,7 @@ function SingerNextUp({
   const mine = Boolean(nextEntry && nextEntry.ownerParticipantId === participantId);
   const [preloadState, setPreloadState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [microphoneState, setMicrophoneState] = useState<'checking' | 'authorized' | 'permission-needed' | 'unavailable'>('checking');
+  const [microphoneWarmed, setMicrophoneWarmed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -558,7 +559,10 @@ function SingerNextUp({
     let stream: MediaStream | null = null;
     let cancelled = false;
 
-    if (!mine || microphoneState !== 'authorized') return;
+    if (!mine || microphoneState !== 'authorized') {
+      setMicrophoneWarmed(false);
+      return;
+    }
 
     acquireSharedMicrophone(participantId)
       .then((nextStream) => {
@@ -567,10 +571,11 @@ function SingerNextUp({
           return;
         }
         stream = nextStream;
-        setMicrophoneState('authorized');
+        setMicrophoneWarmed(true);
       })
       .catch(() => {
         if (!cancelled) {
+          setMicrophoneWarmed(false);
           setMicrophoneState('permission-needed');
         }
       });
@@ -583,8 +588,10 @@ function SingerNextUp({
 
   if (!mine || !nextEntry) return null;
 
-  const microphoneLabel = microphoneState === 'authorized'
-    ? 'Microfone autorizado'
+  const microphoneLabel = microphoneWarmed
+    ? 'Microfone pré-aquecido'
+    : microphoneState === 'authorized'
+      ? 'Microfone autorizado'
     : microphoneState === 'permission-needed'
       ? 'Microfone pronto — será solicitado ao ativar'
       : microphoneState === 'unavailable'
@@ -2707,6 +2714,32 @@ export function App() {
             <div className="stat-card"><span>Rodada</span><strong>{session?.roundMode.kind === 'open' ? '∞' : session?.roundMode.songCount ?? 1}</strong></div>
           </div>
           {session && <RoundProgress session={session} participantId={currentParticipantId} />}
+          {session && (() => {
+            const currentPlaying = session.queue.find((entry) => entry.status === 'playing');
+            const nextForHost = selectNextQueueEntry(session, currentPlaying?.ownerParticipantId);
+            const nextOwner = nextForHost
+              ? session.participants.find((participant) => participant.id === nextForHost.ownerParticipantId)
+              : null;
+
+            return nextForHost ? (
+              <div className="panel next-host-panel">
+                <div>
+                  <span className="eyebrow">🎤 PRÓXIMO CANTOR</span>
+                  <h3>{nextOwner?.name ?? 'Participante'} · {nextForHost.title}</h3>
+                  <p className="muted small-note">
+                    {nextOwner?.online === false
+                      ? 'Participante offline — não será chamado automaticamente.'
+                      : nextForHost.status === 'ready'
+                        ? 'Música preparada e elegível para a próxima chamada.'
+                        : 'Aguardando preparação da música.'}
+                  </p>
+                </div>
+                <span className={`next-host-status ${nextForHost.status === 'ready' && nextOwner?.online !== false ? 'ready' : ''}`}>
+                  {nextForHost.status === 'ready' && nextOwner?.online !== false ? 'PRONTO' : 'AGUARDANDO'}
+                </span>
+              </div>
+            ) : null;
+          })()}
           {session && (
             <div className="panel stage-control-panel">
               <div className="panel-heading">
