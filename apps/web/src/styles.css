@@ -352,3 +352,8 @@ button { border: 0; border-radius: 14px; min-height: 48px; padding: 0 18px; colo
 .singer-preload-grid span { padding: 9px 10px; border: 1px solid #303750; border-radius: 10px; background: #101629; color: #8d96af; font-size: 11px; }
 .singer-preload-grid span.ready { border-color: #3c5d50; color: #b9e6cf; }
 @media (max-width: 620px) { .singer-preload-grid { grid-template-columns: 1fr; } }
+
+.next-host-panel { display: flex; align-items: center; justify-content: space-between; gap: 18px; border-style: dashed; }
+.next-host-status { flex: 0 0 auto; padding: 8px 11px; border-radius: 999px; border: 1px solid #303750; background: #101629; color: #8d96af; font-size: 10px; font-weight: 900; letter-spacing: .08em; }
+.next-host-status.ready { border-color: #3c5d50; background: #12231d; color: #b9e6cf; }
+@media (max-width: 620px) { .next-host-panel { align-items: flex-start; flex-direction: column; } }
