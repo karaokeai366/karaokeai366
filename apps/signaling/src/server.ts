@@ -222,6 +222,9 @@ wss.on('connection', (socket) => {
                   : {}),
                 ...(message.payload?.preparationMessage
                   ? { preparationMessage: String(message.payload.preparationMessage).slice(0, 200) }
+                  : {}),
+                ...(Number.isFinite(message.payload?.playbackStartedAt)
+                  ? { playbackStartedAt: Number(message.payload.playbackStartedAt) }
                   : {})
               }
             : item
