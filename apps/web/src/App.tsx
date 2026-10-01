@@ -1466,6 +1466,64 @@ function TvStage({
   );
 }
 
+function RoundProgress({
+  session,
+  participantId
+}: {
+  session: SessionState;
+  participantId: string;
+}) {
+  const result = session.roundResultsByParticipant?.[participantId];
+  const required = result?.requiredSongs ?? (
+    session.roundMode.kind === 'songs' ? session.roundMode.songCount : undefined
+  );
+  const completed = result?.completedSongs ?? 0;
+  const progress = required
+    ? Math.min(100, (completed / required) * 100)
+    : 0;
+
+  return (
+    <div className="panel round-progress-panel">
+      <div className="panel-heading">
+        <div>
+          <span className="eyebrow">🎯 SUA RODADA</span>
+          <h3>{result?.finished ? 'Sequência concluída' : 'Progresso da sequência'}</h3>
+        </div>
+        {result?.score !== undefined && <span className="round-score-pill">{result.score}/100</span>}
+      </div>
+
+      <div className="round-progress-stats">
+        <strong>{completed}</strong>
+        <span>{required ? \` de \${required} músicas\` : ' músicas concluídas'}</span>
+      </div>
+
+      {required && (
+        <div className="round-progress">
+          <span style={{ width: \`\${progress}%\` }} />
+        </div>
+      )}
+
+      {result?.score !== undefined ? (
+        <p className="muted small-note">
+          Média atual das apresentações oficiais. {result.finished ? 'A nota da sequência já foi fechada.' : 'Ela continua sendo atualizada até completar a sequência.'}
+        </p>
+      ) : (
+        <p className="muted small-note">
+          Somente apresentações concluídas sem recomeço entram no cálculo.
+        </p>
+      )}
+
+      {result?.songScores && result.songScores.length > 0 && (
+        <div className="round-song-scores">
+          {result.songScores.map((item, index) => (
+            <span key={item.queueEntryId}>Música {index + 1}: <strong>{item.score}</strong></span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function App() {
   const initialParams = new URLSearchParams(window.location.search);
   const initialJoin = initialParams.get('join') === '1';
@@ -1933,6 +1991,7 @@ export function App() {
             <p className="muted">Pesquise a música, confira a capa e a versão desejada e coloque-a na fila com um toque.</p>
             <div className="connection-line"><span className={`connection-badge ${connection}`}>{connection === 'online' ? '🟢 conectado' : '🟡 conectando'}</span><span>{session.participants.length} participante(s)</span><span>· rodada {session.roundMode.kind === 'open' ? 'aberta' : `${session.roundMode.songCount} música(s)`}</span></div>
           </div>
+          <RoundProgress session={session} participantId={currentParticipantId} />
           <SingerMicrophone
             session={session}
             participantId={currentParticipantId}
@@ -1963,10 +2022,6 @@ export function App() {
             </div>
             <SearchResults results={searchResults} onAdd={addSearchResultToQueue} />
 
-            <div className="host-stage-controls">
-              <button className="secondary" onClick={startNextSong} disabled={!session?.queue.some((entry) => entry.status === 'ready')}>▶ Iniciar próxima</button>
-              <button className="secondary" onClick={finishCurrentSong} disabled={!session?.queue.some((entry) => entry.status === 'playing')}>✓ Finalizar atual</button>
-            </div>
             {searchPerformed && !searching && searchResults.length === 0 && (
               <div className="search-empty">
                 <span aria-hidden="true">🔎</span>
@@ -2025,6 +2080,7 @@ export function App() {
             <div className="stat-card"><span>Na fila</span><strong>{session?.queueSize ?? 0}</strong></div>
             <div className="stat-card"><span>Rodada</span><strong>{session?.roundMode.kind === 'open' ? '∞' : session?.roundMode.songCount ?? 1}</strong></div>
           </div>
+          {session && <RoundProgress session={session} participantId={currentParticipantId} />}
           <div className="panel">
             <div className="panel-heading">
               <div><span className="eyebrow">RODADA DE AVALIAÇÃO</span><h3>Quantas músicas valem a nota final?</h3></div>
