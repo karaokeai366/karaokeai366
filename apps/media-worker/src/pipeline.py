@@ -589,6 +589,7 @@ def build_manifest(
             "lyrics": lyric_state,
             "separation": separation_state,
             "melody": melody_state,
+            "key": "ready",
         },
     }
 
