@@ -60,6 +60,54 @@ function semitoneLabel(semitones: number): string {
     : `Subir ${absolute} semitom${absolute === 1 ? '' : 's'}`;
 }
 
+
+function normalizeLyricForPattern(text: string): string {
+  return text
+    .toLocaleLowerCase('pt-BR')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\p{L}\p{N}\s]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function findLikelyChorusWindow(
+  lines: Array<{ start: number; text: string }>
+): { start: number; end: number } | null {
+  const normalized = lines
+    .map((line) => ({
+      start: line.start,
+      text: normalizeLyricForPattern(line.text)
+    }))
+    .filter((line) => line.text.length >= 8);
+
+  for (let index = 0; index <= normalized.length - 3; index += 1) {
+    const first = normalized[index];
+    const second = normalized[index + 1];
+    const third = normalized[index + 2];
+
+    const pattern = [first.text, second.text, third.text];
+    for (let later = index + 6; later <= normalized.length - 3; later += 1) {
+      if (normalized[later].start > 150) break;
+      const candidate = normalized.slice(later, later + 3).map((line) => line.text);
+
+      if (
+        pattern[0] === candidate[0]
+        && pattern[1] === candidate[1]
+        && pattern[2] === candidate[2]
+        && normalized[later].start - first.start >= 12
+      ) {
+        return {
+          start: Math.max(8, normalized[later].start - 4),
+          end: Math.min(normalized[later].start + 35, 120)
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
 function scoreLabel(score: number): string {
   if (score >= 85) return 'Excelente';
   if (score >= 65) return 'Boa';
@@ -408,6 +456,7 @@ function SingerMicrophone({
   const previousPlayingStatusRef = useRef<QueueEntry['status'] | null>(null);
   const toneSuggestionCheckedRef = useRef(false);
   const previousToneKeyRef = useRef<string | null>(null);
+  const toneWindowRef = useRef<{ start: number; end: number }>({ start: 15, end: 90 });
 
   const [active, setActive] = useState(false);
   const [error, setError] = useState('');
@@ -572,6 +621,30 @@ function SingerMicrophone({
 
       if (playing.manifestUrl) {
         const manifest = await getSongAssetManifest(playing.manifestUrl);
+
+        const lyricsUrl = resolveSongAssetUrl(
+          playing.manifestUrl,
+          manifest.files.lyricsJson
+        );
+
+        if (lyricsUrl) {
+          const lyricsResponse = await fetch(lyricsUrl);
+          if (lyricsResponse.ok) {
+            const lyrics = await lyricsResponse.json();
+
+            if (Array.isArray(lyrics?.lines)) {
+              const lyricLines = lyrics.lines
+                .filter((line: unknown): line is { start: number; text: string } =>
+                  Boolean(line)
+                  && typeof (line as { start?: unknown }).start === 'number'
+                  && typeof (line as { text?: unknown }).text === 'string'
+                );
+              const chorusWindow = findLikelyChorusWindow(lyricLines);
+              if (chorusWindow) toneWindowRef.current = chorusWindow;
+            }
+          }
+        }
+
         const melodyUrl = resolveSongAssetUrl(
           playing.manifestUrl,
           manifest.files.melodyJson
@@ -657,7 +730,8 @@ function SingerMicrophone({
             if (
               !toneSuggestionCheckedRef.current
               && elapsedSeconds >= 18
-              && elapsedSeconds <= 90
+              && elapsedSeconds >= toneWindowRef.current.start
+              && elapsedSeconds <= toneWindowRef.current.end
               && pitchSamplesRef.current.length >= 30
               && referenceNotesRef.current.length > 0
             ) {
@@ -666,8 +740,8 @@ function SingerMicrophone({
                 referenceNotesRef.current,
                 {
                   minimumSamples: 30,
-                  windowStartSeconds: 15,
-                  windowEndSeconds: 90,
+                  windowStartSeconds: toneWindowRef.current.start,
+                  windowEndSeconds: toneWindowRef.current.end,
                   minimumAbsoluteShift: 0.8,
                   maximumShift: 4
                 }
