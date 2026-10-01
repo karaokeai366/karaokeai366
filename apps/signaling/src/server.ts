@@ -108,6 +108,33 @@ function calculateRestartCredits(songCount: number | 'open'): number {
 function ensureRoundState(state: any): void {
   state.roundId ??= randomUUID();
   state.roundResultsByParticipant ??= {};
+  state.autoAdvance ??= true;
+}
+
+function getPlaybackPositionSeconds(item: any): number {
+  if (Number.isFinite(item?.playbackPositionSeconds)) {
+    return Math.max(0, Number(item.playbackPositionSeconds));
+  }
+
+  if (Number.isFinite(item?.playbackStartedAt)) {
+    return Math.max(0, (Date.now() - Number(item.playbackStartedAt)) / 1000);
+  }
+
+  return 0;
+}
+
+function canAutoAdvanceEntry(state: any, entry: any): boolean {
+  if (entry?.status !== 'ready') return false;
+
+  const mode = state?.roundMode;
+  if (mode?.kind !== 'songs') return true;
+
+  const result = state?.roundResultsByParticipant?.[entry.ownerParticipantId];
+  return !(result && result.roundId === state.roundId && result.finished);
+}
+
+function findAutoAdvanceEntry(state: any, queue: any[]): any | null {
+  return queue.find((item: any) => canAutoAdvanceEntry(state, item)) ?? null;
 }
 
 
@@ -329,7 +356,20 @@ wss.on('connection', (socket) => {
             ...item,
             ...(nextStatus === 'playing' ? { roundId: currentState.roundId } : {}),
             status: nextStatus,
-            ...(nextStatus === 'playing' ? { playbackStartedAt: startAt } : {}),
+            ...(nextStatus === 'playing'
+              ? {
+                  playbackStartedAt: startAt,
+                  playbackPositionSeconds: 0,
+                  playbackState: 'playing',
+                  playbackPausedAt: undefined
+                }
+              : nextStatus === 'completed' || nextStatus === 'cancelled'
+                ? {
+                    playbackPositionSeconds: undefined,
+                    playbackPausedAt: undefined,
+                    playbackState: undefined
+                  }
+                : {}),
             attempts: attemptState.attempts,
             activePerformanceId: attemptState.activePerformanceId,
             ...(message.payload?.assetId
@@ -460,6 +500,163 @@ wss.on('connection', (socket) => {
         break;
       }
 
+      case 'playback.control': {
+        const client = clientsBySocket.get(socket);
+        if (!client) { reject(socket, 'Conecte-se a uma sessão primeiro.'); return; }
+
+        const session = sessions.get(client.sessionId);
+        if (!session) { reject(socket, 'Sessão não encontrada.'); return; }
+        if (client.participantId !== session.hostParticipantId) {
+          reject(socket, 'Somente o Host pode controlar a reprodução.');
+          return;
+        }
+
+        const currentState = session.state as any;
+        const action = String(message.payload?.action ?? '');
+        if (!['pause', 'resume', 'skip', 'end'].includes(action)) {
+          reject(socket, 'Comando de reprodução inválido.');
+          return;
+        }
+
+        const queue = Array.isArray(currentState?.queue) ? currentState.queue : [];
+        const requestedId = String(message.payload?.queueEntryId ?? '').trim();
+        const entry = requestedId
+          ? queue.find((item: any) => item.id === requestedId)
+          : queue.find((item: any) => item.status === 'playing');
+
+        if (!entry && action !== 'end') {
+          reject(socket, 'Nenhuma música em reprodução.');
+          return;
+        }
+
+        if (action === 'end') {
+          currentState.queue = queue.map((item: any) => {
+            if (item.status === 'playing') {
+              const attemptState = transitionPerformanceAttempt(
+                item,
+                'cancelled',
+                Date.now(),
+                undefined,
+                'abandoned'
+              );
+
+              return {
+                ...item,
+                status: 'cancelled',
+                playbackPositionSeconds: undefined,
+                playbackPausedAt: undefined,
+                playbackState: undefined,
+                activePerformanceId: attemptState.activePerformanceId,
+                attempts: attemptState.attempts
+              };
+            }
+            return item;
+          });
+          currentState.status = 'finished';
+          session.state = currentState;
+          broadcast(session, 'session.state', { state: session.state });
+          break;
+        }
+
+        if (!entry || entry.status !== 'playing') {
+          reject(socket, 'A música selecionada não está em reprodução.');
+          return;
+        }
+
+        if (action === 'pause') {
+          if (entry.playbackState === 'paused') return;
+
+          const position = Math.min(
+            Number.isFinite(entry.durationSeconds) ? Number(entry.durationSeconds) : 3600,
+            getPlaybackPositionSeconds(entry)
+          );
+
+          currentState.queue = queue.map((item: any) =>
+            item.id === entry.id
+              ? {
+                  ...item,
+                  playbackPositionSeconds: position,
+                  playbackPausedAt: Date.now(),
+                  playbackState: 'paused'
+                }
+              : item
+          );
+        } else if (action === 'resume') {
+          if (entry.playbackState !== 'paused') return;
+
+          const position = Math.max(0, Number(entry.playbackPositionSeconds ?? 0));
+          currentState.queue = queue.map((item: any) =>
+            item.id === entry.id
+              ? {
+                  ...item,
+                  playbackStartedAt: Date.now() - Math.round(position * 1000),
+                  playbackPositionSeconds: position,
+                  playbackPausedAt: undefined,
+                  playbackState: 'playing'
+                }
+              : item
+          );
+        } else if (action === 'skip') {
+          const attemptState = transitionPerformanceAttempt(
+            entry,
+            'cancelled',
+            Date.now(),
+            undefined,
+            'abandoned'
+          );
+
+          let nextQueue = queue.map((item: any) =>
+            item.id === entry.id
+              ? {
+                  ...item,
+                  status: 'cancelled',
+                  playbackPositionSeconds: undefined,
+                  playbackPausedAt: undefined,
+                  playbackState: undefined,
+                  activePerformanceId: attemptState.activePerformanceId,
+                  attempts: attemptState.attempts
+                }
+              : item
+          );
+
+          if (currentState.autoAdvance !== false) {
+            const next = findAutoAdvanceEntry(currentState, nextQueue);
+            if (next) {
+              const startAt = Date.now();
+              const nextAttempt = transitionPerformanceAttempt(
+                next,
+                'playing',
+                startAt
+              );
+              nextQueue = nextQueue.map((item: any) =>
+                item.id === next.id
+                  ? {
+                      ...item,
+                      status: 'playing',
+                      roundId: currentState.roundId,
+                      playbackStartedAt: startAt,
+                      playbackPositionSeconds: 0,
+                      playbackState: 'playing',
+                      playbackPausedAt: undefined,
+                      attempts: nextAttempt.attempts,
+                      activePerformanceId: nextAttempt.activePerformanceId
+                    }
+                  : item
+              );
+            }
+          }
+
+          currentState.queue = nextQueue;
+          currentState.status = nextQueue.some((item: any) => item.status === 'playing')
+            ? 'playing'
+            : currentState.status;
+        }
+
+        session.state = currentState;
+        broadcast(session, 'session.state', { state: session.state });
+        break;
+      }
+
       case 'playback.finished': {
         const client = clientsBySocket.get(socket);
         if (!client) { reject(socket, 'Conecte-se a uma sessão primeiro.'); return; }
@@ -472,12 +669,16 @@ wss.on('connection', (socket) => {
         const entry = queue.find((item: any) => item.id === queueEntryId);
         if (!entry) { reject(socket, 'Música não encontrada na fila.'); return; }
         if (entry.status !== 'playing') { return; }
+        if (entry.playbackState === 'paused') {
+          reject(socket, 'A reprodução pausada não pode ser finalizada automaticamente.');
+          return;
+        }
         if (!Number.isFinite(entry.durationSeconds) || entry.durationSeconds <= 0
           || !Number.isFinite(entry.playbackStartedAt)) {
           reject(socket, 'A duração da música não está disponível para encerramento automático.');
           return;
         }
-        const elapsedSeconds = Math.max(0, (Date.now() - Number(entry.playbackStartedAt)) / 1000);
+        const elapsedSeconds = getPlaybackPositionSeconds(entry);
         if (elapsedSeconds + 0.5 < Number(entry.durationSeconds)) {
           reject(socket, 'A reprodução ainda não chegou ao final.');
           return;
@@ -661,6 +862,7 @@ wss.on('connection', (socket) => {
         currentState.roundMode = mode.kind === 'open'
           ? { kind: 'open' }
           : { kind: 'songs', songCount: Math.floor(mode.songCount) };
+        currentState.status = 'lobby';
 
         currentState.roundId = randomUUID();
         currentState.roundResultsByParticipant = {};
