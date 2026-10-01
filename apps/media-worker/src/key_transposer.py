@@ -123,7 +123,9 @@ def transpose_asset_key(
     if not base_melody_path.exists():
         shutil.copyfile(melody_path, base_melody_path)
 
-    if delta != 0:
+    if delta == 0:
+        shutil.copyfile(base_instrumental_path, instrumental_path)
+    else:
         try:
             import librosa
             import soundfile as sf
