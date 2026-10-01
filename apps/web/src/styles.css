@@ -120,6 +120,8 @@ button { border: 0; border-radius: 14px; min-height: 48px; padding: 0 18px; colo
 .result-info { min-width: 0; }
 .result-info strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
 .result-artist { display: block; margin-top: 4px; color: #b1b7ce; font-size: 12px; font-weight: 700; }
+.result-badges { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.result-badge { display: inline-flex; align-items: center; min-height: 20px; padding: 2px 7px; border: 1px solid #30385a; border-radius: 999px; color: #b9c2e2; background: #141a2d; font-size: 9px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; }
 .result-meta { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 6px; color: #727b98; font-size: 10px; line-height: 1.4; }
 .result-actions { display: flex; align-items: center; gap: 8px; }
 .result-source { color: #8e97b4; text-decoration: none; font-size: 11px; white-space: nowrap; }
