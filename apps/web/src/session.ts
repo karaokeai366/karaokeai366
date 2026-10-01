@@ -48,6 +48,8 @@ export function createSession(name: string): SessionState {
     queue: [],
     queueSize: 0,
     restartCreditsByParticipant: { [participantId]: 1 },
+    roundId: randomId('round'),
+    roundResultsByParticipant: {},
     roundMode: { kind: 'songs', songCount: 1 },
     status: 'lobby'
   };
