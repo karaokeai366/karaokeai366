@@ -47,5 +47,6 @@ export interface SongAssetManifest {
     lyrics: 'pending' | 'ready' | 'missing' | 'error';
     separation: 'pending' | 'ready' | 'error';
     melody: 'pending' | 'ready' | 'error';
+    key: 'pending' | 'ready' | 'error';
   };
 }
