@@ -916,7 +916,15 @@ function SingerMicrophone({
             <small>Tom atual: <strong>{pitchClass(playing.selectedKey ?? playing.originalKey)}</strong></small>
           )}
           {referenceNotesRef.current.length > 0 && <small>A avaliação será calculada ao finalizar a música.</small>}
-          {playing?.durationSeconds && <small>{restartAvailable ? `Recomeços restantes: ${remainingRestartCredits} · disponível até 50%` : remainingRestartCredits > 0 ? 'Limite de recomeço: até 50% da música' : 'Sem recomeços restantes nesta rodada'}</small>}
+          {playing?.durationSeconds && (
+            <small>
+              {restartAvailable
+                ? `Recomeços restantes: ${remainingRestartCredits} · ${Math.max(0, Math.ceil(50 - restartProgress))}% da janela restante`
+                : remainingRestartCredits > 0
+                  ? 'Janela de recomeço encerrada (50%)'
+                  : 'Sem recomeços restantes nesta rodada'}
+            </small>
+          )}
           {!supported && <small>Este dispositivo/navegador não oferece WebRTC.</small>}
         </div>
 
