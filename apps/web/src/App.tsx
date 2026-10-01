@@ -292,7 +292,6 @@ function QueueList({
   onRemove: (queueEntryId: string) => void;
   onPrepare: (queueEntryId: string, source: QueueEntry) => void;
   onChangeKey: (queueEntryId: string, entry: QueueEntry, targetKey: string, restartPlayback?: boolean) => Promise<boolean> | void;
-  changingKeyId: string | null;
 }) {
   if (session.queue.length === 0) {
     return <div className="empty-queue">A fila está vazia. A primeira música pode ser adicionada pelo celular de quem vai cantar.</div>;
@@ -1095,7 +1094,7 @@ function TvStage({
     }
 
     if (!voiceSourceRef.current) {
-      voiceSourceRef.current.crossOrigin = 'anonymous';
+      remoteAudioRef.current.crossOrigin = 'anonymous';
       const voiceGain = context.createGain();
       const voiceSource = context.createMediaElementSource(remoteAudioRef.current);
       voiceSourceRef.current = voiceSource;
