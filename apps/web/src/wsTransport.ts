@@ -75,9 +75,9 @@ export class WebSocketTransport {
     this.listeners.add(handler);
     return () => this.listeners.delete(handler);
   }
-}
 
   subscribeConnection(handler: (state: 'open' | 'close', intentional: boolean) => void): () => void {
     this.connectionListeners.add(handler);
     return () => this.connectionListeners.delete(handler);
   }
+}
