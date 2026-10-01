@@ -31,6 +31,7 @@ export interface QueueAddRequest {
   sourceId?: string;
   source?: string;
   sourceUrl?: string;
+  thumbnailUrl?: string;
   requestedKey?: string;
 }
 
