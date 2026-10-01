@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import type { SessionState } from './domain';
+import type { QueueEntry, SessionState } from './domain';
 import {
   buildJoinUrl,
   createSession,
@@ -225,7 +225,7 @@ function QueueList({
   session: SessionState;
   currentParticipantId: string;
   onRemove: (queueEntryId: string) => void;
-  onPrepare: (queueEntryId: string, sourceUrl: string) => void;
+  onPrepare: (queueEntryId: string, source: QueueEntry) => void;
 }) {
   if (session.queue.length === 0) {
     return <div className="empty-queue">A fila está vazia. A primeira música pode ser adicionada pelo celular de quem vai cantar.</div>;
@@ -255,7 +255,7 @@ function QueueList({
             {entry.sourceUrl && entry.status === 'queued' && (
               <button
                 className="queue-prepare"
-                onClick={() => onPrepare(entry.id, entry.sourceUrl!)}
+                onClick={() => onPrepare(entry.id, entry)}
               >
                 Preparar
               </button>
@@ -488,8 +488,8 @@ export function App() {
     }
   }
 
-  async function prepareQueueEntry(queueEntryId: string, sourceUrl: string) {
-    if (!session || !transport || !currentParticipantId) return;
+  async function prepareQueueEntry(queueEntryId: string, entry: QueueEntry) {
+    if (!session || !transport || !currentParticipantId || !entry.sourceUrl || !entry.sourceId) return;
 
     try {
       transport.sendRaw('queue.status.set', session.sessionId, currentParticipantId, {
@@ -497,7 +497,14 @@ export function App() {
         status: 'preparing'
       });
 
-      await prepareSong(sourceUrl, 'video');
+      await prepareSong({
+        sourceId: entry.sourceId,
+        source: entry.source ?? 'youtube',
+        title: entry.title,
+        artist: entry.artist,
+        sourceUrl: entry.sourceUrl,
+        thumbnailUrl: entry.thumbnailUrl
+      }, 'video');
 
       transport.sendRaw('queue.status.set', session.sessionId, currentParticipantId, {
         queueEntryId,
