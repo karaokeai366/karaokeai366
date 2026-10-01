@@ -35,6 +35,53 @@ function broadcast(session: Session, type: string, payload: unknown, except?: We
   }
 }
 
+function transitionPerformanceAttempt(
+  item: any,
+  nextStatus: string,
+  startAt: number,
+  requestedPerformanceId?: string,
+  cancelReason: 'restart' | 'key-test' | 'abandoned' = 'abandoned'
+) {
+  const attempts = Array.isArray(item.attempts) ? [...item.attempts] : [];
+  let activePerformanceId = item.activePerformanceId;
+
+  if (item.status === 'playing' && nextStatus !== 'playing' && activePerformanceId) {
+    const activeIndex = attempts.findIndex(
+      (attempt: any) => attempt.performanceId === activePerformanceId
+    );
+    if (activeIndex >= 0 && !attempts[activeIndex].official) {
+      attempts[activeIndex] = {
+        ...attempts[activeIndex],
+        endedAt: Date.now(),
+        cancelled: nextStatus !== 'completed',
+        ...(nextStatus !== 'completed' ? { cancelReason } : {})
+      };
+    }
+  }
+
+  if (nextStatus === 'playing') {
+    activePerformanceId = requestedPerformanceId
+      || item.activePerformanceId
+      || `${item.id}-${startAt}-${randomUUID().slice(0, 8)}`;
+
+    const hasActiveAttempt = attempts.some(
+      (attempt: any) => attempt.performanceId === activePerformanceId && !attempt.cancelled
+    );
+    if (!hasActiveAttempt) {
+      attempts.push({
+        performanceId: activePerformanceId,
+        startedAt: startAt,
+        cancelled: false,
+        official: false
+      });
+    }
+  }
+
+  return {
+    attempts,
+    activePerformanceId
+  };
+}
 function reject(socket: WebSocket, message: string) {
   send(socket, 'session.error', { message });
 }
@@ -233,38 +280,63 @@ wss.on('connection', (socket) => {
           return;
         }
 
-        currentState.queue = queue.map((item: any) =>
-          item.id === queueEntryId
-            ? {
-                ...item,
-                status: nextStatus,
-                ...(message.payload?.assetId
-                  ? { assetId: String(message.payload.assetId).slice(0, 128) }
-                  : {}),
-                ...(message.payload?.manifestUrl
-                  ? { manifestUrl: String(message.payload.manifestUrl).slice(0, 2000) }
-                  : {}),
-                ...(message.payload?.originalKey
-                  ? { originalKey: String(message.payload.originalKey).slice(0, 16) }
-                  : {}),
-                ...(message.payload?.selectedKey
-                  ? { selectedKey: String(message.payload.selectedKey).slice(0, 8) }
-                  : {}),
-                ...(message.payload?.preparationStage
-                  ? { preparationStage: String(message.payload.preparationStage).slice(0, 40) }
-                  : {}),
-                ...(Number.isFinite(message.payload?.preparationProgress)
-                  ? { preparationProgress: Math.max(0, Math.min(100, Number(message.payload.preparationProgress))) }
-                  : {}),
-                ...(message.payload?.preparationMessage
-                  ? { preparationMessage: String(message.payload.preparationMessage).slice(0, 200) }
-                  : {}),
-                ...(Number.isFinite(message.payload?.playbackStartedAt)
-                  ? { playbackStartedAt: Number(message.payload.playbackStartedAt) }
-                  : {})
-              }
-            : item
-        );
+        const requestedPerformanceId = String(
+          message.payload?.performanceId ?? ''
+        ).trim().slice(0, 160);
+        const startAt = Number.isFinite(message.payload?.playbackStartedAt)
+          ? Number(message.payload.playbackStartedAt)
+          : Date.now();
+        const attemptCancelReason =
+          message.payload?.attemptCancelReason === 'key-test'
+          || message.payload?.attemptCancelReason === 'restart'
+          || message.payload?.attemptCancelReason === 'abandoned'
+            ? message.payload.attemptCancelReason
+            : 'abandoned';
+
+        currentState.queue = queue.map((item: any) => {
+          if (item.id !== queueEntryId) return item;
+
+          const attemptState = transitionPerformanceAttempt(
+            item,
+            nextStatus,
+            startAt,
+            requestedPerformanceId || undefined,
+            attemptCancelReason
+          );
+
+          return {
+            ...item,
+            status: nextStatus,
+            ...(nextStatus === 'playing' ? { playbackStartedAt: startAt } : {}),
+            attempts: attemptState.attempts,
+            activePerformanceId: attemptState.activePerformanceId,
+            ...(message.payload?.assetId
+              ? { assetId: String(message.payload.assetId).slice(0, 128) }
+              : {}),
+            ...(message.payload?.manifestUrl
+              ? { manifestUrl: String(message.payload.manifestUrl).slice(0, 2000) }
+              : {}),
+            ...(message.payload?.originalKey
+              ? { originalKey: String(message.payload.originalKey).slice(0, 16) }
+              : {}),
+            ...(message.payload?.selectedKey
+              ? { selectedKey: String(message.payload.selectedKey).slice(0, 8) }
+              : {}),
+            ...(message.payload?.preparationStage
+              ? { preparationStage: String(message.payload.preparationStage).slice(0, 40) }
+              : {}),
+            ...(Number.isFinite(message.payload?.preparationProgress)
+              ? { preparationProgress: Math.max(0, Math.min(100, Number(message.payload.preparationProgress))) }
+              : {}),
+            ...(message.payload?.preparationMessage
+              ? { preparationMessage: String(message.payload.preparationMessage).slice(0, 200) }
+              : {}),
+            ...(Number.isFinite(message.payload?.durationSeconds)
+              ? { durationSeconds: Math.max(0, Math.min(3600, Number(message.payload.durationSeconds))) }
+              : {})
+          };
+        });
+
         session.state = currentState;
         broadcast(session, 'session.state', { state: session.state });
         break;
@@ -332,15 +404,36 @@ wss.on('connection', (socket) => {
         }
 
         currentState.restartCreditsByParticipant[client.participantId] = credits - 1;
-        currentState.queue = queue.map((item: any) =>
-          item.id === queueEntryId
-            ? {
-                ...item,
-                playbackStartedAt: Date.now(),
-                score: undefined
+        const now = Date.now();
+        currentState.queue = queue.map((item: any) => {
+          if (item.id !== queueEntryId) return item;
+
+          const attemptState = transitionPerformanceAttempt(
+            item,
+            'playing',
+            now,
+            undefined,
+            'restart'
+          );
+
+          return {
+            ...item,
+            playbackStartedAt: now,
+            activePerformanceId: `${queueEntryId}-${now}-${randomUUID().slice(0, 8)}`,
+            attempts: [
+              ...attemptState.attempts.filter(
+                (attempt: any) => attempt.performanceId !== attemptState.activePerformanceId
+              ),
+              {
+                performanceId: `${queueEntryId}-${now}-${randomUUID().slice(0, 8)}`,
+                startedAt: now,
+                cancelled: false,
+                official: false
               }
-            : item
-        );
+            ],
+            score: undefined
+          };
+        });
 
         session.state = currentState;
         broadcast(session, 'session.state', { state: session.state });
@@ -377,10 +470,39 @@ wss.on('connection', (socket) => {
           reject(socket, 'Pontuação de apresentação inválida.');
           return;
         }
-        currentState.queue = queue.map((item: any) => item.id === queueEntryId
-          ? { ...item, score: { overall, pitch, precision, rhythm, stability, matchedSamples, performanceId, sealedAt: Date.now() } }
-          : item
-        );
+        currentState.queue = queue.map((item: any) => {
+          if (item.id !== queueEntryId) return item;
+
+          const attempts = Array.isArray(item.attempts) ? [...item.attempts] : [];
+          const activeIndex = attempts.findIndex(
+            (attempt: any) => attempt.performanceId === performanceId
+          );
+
+          if (activeIndex >= 0) {
+            attempts[activeIndex] = {
+              ...attempts[activeIndex],
+              endedAt: Date.now(),
+              cancelled: false,
+              official: true
+            };
+          }
+
+          return {
+            ...item,
+            attempts,
+            score: {
+              overall,
+              pitch,
+              precision,
+              rhythm,
+              stability,
+              matchedSamples,
+              performanceId,
+              sealedAt: Date.now()
+            }
+          };
+        });
+
         session.state = currentState;
         broadcast(session, 'session.state', { state: session.state });
         break;
