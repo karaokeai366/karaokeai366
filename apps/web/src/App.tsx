@@ -416,6 +416,7 @@ function SingerMicrophone({
   const [toneBusy, setToneBusy] = useState(false);
   const [showManualTone, setShowManualTone] = useState(false);
   const [manualTone, setManualTone] = useState('');
+  const [appliedTone, setAppliedTone] = useState<{ key: string; from: string } | null>(null);
 
   function stop() {
     peerRef.current?.close();
@@ -478,6 +479,10 @@ function SingerMicrophone({
         finishPerformance();
       }
       stop();
+    }
+
+    if (previousId && previousId !== playing?.id) {
+      setAppliedTone(null);
     }
 
     previousPlayingIdRef.current = playing?.id ?? null;
@@ -742,6 +747,10 @@ function SingerMicrophone({
     try {
       const success = await onChangeKey(playing.id, playing, targetKey, true);
       if (success) {
+        setAppliedTone({
+          key: targetKey,
+          from: previousKey
+        });
         setToneSuggestion(null);
         setShowManualTone(false);
       }
@@ -799,7 +808,38 @@ function SingerMicrophone({
         </div>
       )}
 
+      {appliedTone && playing && (
+        <div className="tone-applied">
+          <div>
+            <span className="eyebrow">🎼 TOM EM TESTE</span>
+            <strong>Tom {appliedTone.key}</strong>
+            <small>Você veio de {appliedTone.from}. Confira como sua voz se sente neste tom.</small>
+          </div>
+          <div className="tone-actions">
+            <button
+              className="secondary"
+              disabled={toneBusy}
+              onClick={() => void applyTone(appliedTone.from)}
+            >
+              ↩ Voltar para {appliedTone.from}
+            </button>
+            <button
+              className="secondary"
+              disabled={toneBusy}
+              onClick={() => {
+                setManualTone(appliedTone.key);
+                setShowManualTone(true);
+              }}
+            >
+              Ajustar outro
+            </button>
+          </div>
+        </div>
+      )}
+
       {showManualTone && playing && (
+        <div className="tone-manual">
+          <label>      {showManualTone && playing && (
         <div className="tone-manual">
           <label>
             <span>🎹 Escolha o tom</span>
