@@ -2123,6 +2123,7 @@ export function App() {
   const [connection, setConnection] = useState<'offline' | 'connecting' | 'online' | 'error'>('offline');
   const [error, setError] = useState('');
   const [transport, setTransport] = useState<WebSocketTransport | null>(null);
+  const reconnectInFlightRef = useRef(false);
   const [songTitle, setSongTitle] = useState('');
   const [songArtist, setSongArtist] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -2159,6 +2160,17 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    const handleOnline = () => {
+      if (session && connection !== 'online') {
+        void reconnectCurrentSession();
+      }
+    };
+
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [session, connection, currentParticipantId]);
+
+  useEffect(() => {
     return () => transport?.disconnect();
   }, [transport]);
 
@@ -2168,6 +2180,13 @@ export function App() {
 
     const socket = new WebSocketTransport(getSignalingUrl());
     const participantId = state.hostParticipantId;
+
+    socket.subscribeConnection((state, intentional) => {
+      if (state === 'close' && !intentional) {
+        setConnection('offline');
+        setError('Conexão perdida. Tentaremos reconectar quando a rede voltar.');
+      }
+    });
 
     socket.subscribe((message) => {
       if (message.type === 'session.created' || message.type === 'session.state') {
@@ -2230,6 +2249,13 @@ export function App() {
     const participantId = getDeviceId();
     const socket = new WebSocketTransport(getSignalingUrl());
 
+    socket.subscribeConnection((state, intentional) => {
+      if (state === 'close' && !intentional) {
+        setConnection('offline');
+        setError('Conexão perdida. Tentaremos reconectar quando a rede voltar.');
+      }
+    });
+
     socket.subscribe((message) => {
       if (message.type === 'session.joined' || message.type === 'session.state') {
         const incoming = (message.payload as { state?: SessionState })?.state;
@@ -2267,9 +2293,62 @@ export function App() {
     }
   }
 
+  async function reconnectCurrentSession(): Promise<void> {
+    if (!session || !currentParticipantId || reconnectInFlightRef.current) return;
+
+    const participant = session.participants.find((item) => item.id === currentParticipantId);
+    if (!participant) return;
+
+    reconnectInFlightRef.current = true;
+    setConnection('connecting');
+    setError('');
+
+    const socket = new WebSocketTransport(getSignalingUrl());
+
+    socket.subscribeConnection((state, intentional) => {
+      if (state === 'close' && !intentional) {
+        setConnection('offline');
+      }
+    });
+
+    socket.subscribe((message) => {
+      if (message.type === 'session.reconnected' || message.type === 'session.state') {
+        const incoming = (message.payload as { state?: SessionState })?.state;
+        if (incoming) {
+          setSession(incoming);
+          localStorage.setItem('karaokeai.session.v1', JSON.stringify(incoming));
+        }
+        setConnection('online');
+      }
+
+      if (message.type === 'session.error') {
+        setError(String((message.payload as { message?: string })?.message ?? 'Erro na sessão.'));
+        setConnection('error');
+      }
+
+      if (message.type === 'host.disconnected') {
+        setError('O anfitrião se desconectou. A sessão continua preservada para reconexão.');
+      }
+    });
+
+    try {
+      await socket.connect();
+      socket.sendRaw('session.reconnect', session.sessionId, currentParticipantId, {
+        role: participant.role
+      });
+      setTransport(socket);
+    } catch (err) {
+      socket.disconnect();
+      setConnection('error');
+      setError(err instanceof Error ? err.message : 'Falha ao reconectar à sessão.');
+    } finally {
+      reconnectInFlightRef.current = false;
+    }
+  }
+
   async function reconnectStoredHost() {
     if (!session || session.hostParticipantId !== currentParticipantId) return;
-    await connectAsHost(session);
+    await reconnectCurrentSession();
   }
 
   async function searchMusic() {
@@ -2672,7 +2751,16 @@ export function App() {
             <span className="eyebrow">VOCÊ ESTÁ NA SESSÃO</span>
             <h2>Olá, {currentParticipant?.name ?? 'cantor'} 👋</h2>
             <p className="muted">Pesquise a música, confira a capa e a versão desejada e coloque-a na fila com um toque.</p>
-            <div className="connection-line"><span className={`connection-badge ${connection}`}>{connection === 'online' ? '🟢 conectado' : '🟡 conectando'}</span><span>{session.participants.length} participante(s)</span><span>· rodada {session.roundMode.kind === 'open' ? 'aberta' : `${session.roundMode.songCount} música(s)`}{session.status === 'finished' ? ' · 🏁 encerrada' : ''}</span></div>
+            <div className="connection-line">
+              <span className={`connection-badge ${connection}`}>{connection === 'online' ? '🟢 conectado' : connection === 'offline' ? '🔴 offline' : '🟡 conectando'}</span>
+              <span>{session.participants.length} participante(s)</span>
+              <span>· rodada {session.roundMode.kind === 'open' ? 'aberta' : session.roundMode.songCount + ' música(s)'}</span>
+              {connection !== 'online' && (
+                <button type="button" className="link-button inline-reconnect" onClick={() => void reconnectCurrentSession()}>
+                  Reconectar
+                </button>
+              )}
+            </div>
           </div>
           <RoundProgress session={session} participantId={currentParticipantId} />
           <SingerNextUp
@@ -2758,7 +2846,7 @@ export function App() {
                 <a href={tvJoinUrl} target="_blank" rel="noreferrer">Abrir palco nesta tela</a>
               </div>
               <span className={`connection-badge ${connection}`}>{connection === 'online' ? '🟢 sessão conectada' : connection === 'connecting' ? '🟡 conectando…' : connection === 'error' ? '🔴 erro de conexão' : '⚪ local'}</span>
-              {connection === 'error' && <button className="secondary reconnect-button" onClick={reconnectStoredHost}>Tentar novamente</button>}
+              {connection !== 'online' && <button className="secondary reconnect-button" onClick={() => void reconnectCurrentSession()}>Tentar novamente</button>}
             </div>
             <div className="qr-wrap"><QRCodeSVG value={joinUrl} size={210} includeMargin level="M" /><small>Escaneie para entrar</small></div>
           </div>
