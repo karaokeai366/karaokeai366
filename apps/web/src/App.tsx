@@ -839,19 +839,34 @@ function SingerMicrophone({
         <div>
           <span className="eyebrow">🎙️ SEU MICROFONE</span>
           <strong>{active ? 'Microfone conectado à TV' : 'Sua voz pode ir para o palco'}</strong>
+          {playing && (playing.selectedKey || playing.originalKey) && (
+            <small>Tom atual: <strong>{pitchClass(playing.selectedKey ?? playing.originalKey)}</strong></small>
+          )}
           {referenceNotesRef.current.length > 0 && <small>A avaliação será calculada ao finalizar a música.</small>}
           {!supported && <small>Este dispositivo/navegador não oferece WebRTC.</small>}
         </div>
 
-        {!active ? (
-          <button className="secondary" onClick={start} disabled={!supported}>
-            🎙️ Ativar microfone
+        <div className="microphone-actions">
+          {!active ? (
+            <button className="secondary" onClick={start} disabled={!supported}>
+              🎙️ Ativar microfone
+            </button>
+          ) : (
+            <button className="secondary" onClick={stop}>
+              ⏹ Parar microfone
+            </button>
+          )}
+          <button
+            className="secondary"
+            onClick={() => {
+              setManualTone(pitchClass(playing.selectedKey ?? playing.originalKey));
+              setShowManualTone((current) => !current);
+            }}
+            disabled={toneBusy}
+          >
+            🎼 Ajustar tom
           </button>
-        ) : (
-          <button className="secondary" onClick={stop}>
-            ⏹ Parar microfone
-          </button>
-        )}
+        </div>
 
         {error && <small className="microphone-error">{error}</small>}
       </div>
