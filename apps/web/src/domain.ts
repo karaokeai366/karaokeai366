@@ -80,6 +80,7 @@ export interface SessionState {
   queueSize: number;
   restartCreditsByParticipant?: Record<string, number>;
   roundId: string;
+  autoAdvance?: boolean;
   roundResultsByParticipant?: Record<string, RoundResult>;
   roundMode: RoundMode;
   status: 'lobby' | 'playing' | 'finished';
