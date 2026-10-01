@@ -458,6 +458,22 @@ wss.on('connection', (socket) => {
         if (!entry) { reject(socket, 'Música não encontrada na fila.'); return; }
         if (entry.ownerParticipantId !== client.participantId) { reject(socket, 'Somente o cantor pode enviar a pontuação da própria apresentação.'); return; }
         if (entry.status !== 'completed') { reject(socket, 'A pontuação oficial só pode ser enviada depois de finalizar a música.'); return; }
+        if (!entry.activePerformanceId || performanceId !== entry.activePerformanceId) {
+          reject(socket, 'Esta tentativa não é mais a tentativa ativa da apresentação.');
+          return;
+        }
+
+        const activeAttempt = Array.isArray(entry.attempts)
+          ? entry.attempts.find(
+              (attempt: any) => attempt.performanceId === entry.activePerformanceId
+            )
+          : null;
+
+        if (!activeAttempt || activeAttempt.cancelled || activeAttempt.official) {
+          reject(socket, 'A tentativa informada não pode receber pontuação oficial.');
+          return;
+        }
+
         const rawScore = message.payload?.score ?? {};
         const clampScore = (value: unknown): number | null => {
           if (!Number.isFinite(value)) return null;
