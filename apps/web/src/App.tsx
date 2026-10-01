@@ -2094,10 +2094,11 @@ export function App() {
   }
 
   function startNextSong(): boolean {
-    if (session?.queue.some((entry) => entry.status === 'playing')) return false;
-    const next = session?.queue.find((entry) => entry.status === 'ready');
-    if (!next) return false;
-    setQueueStatus(next.id, 'playing');
+    if (!session || !transport || session.hostParticipantId !== currentParticipantId) return false;
+    if (session.queue.some((entry) => entry.status === 'playing')) return false;
+    if (!session.queue.some((entry) => entry.status === 'ready')) return false;
+
+    transport.sendRaw('queue.next', session.sessionId, currentParticipantId, {});
     return true;
   }
 
@@ -2350,6 +2351,7 @@ export function App() {
                 )}
               </div>
               <p className="muted small-note">
+                A fila automática prioriza quem fez menos músicas na rodada e evita repetir o último cantor quando houver outro elegível.
                 Pausar preserva a posição. Pular cancela a tentativa sem gerar nota. Encerrar fecha a apresentação atual.
               </p>
             </div>
