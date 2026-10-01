@@ -136,8 +136,10 @@ def search(
     for entry in entries:
         if not entry:
             continue
-        source_url = entry.get("webpage_url") or entry.get("url")
         source_id = entry.get("id")
+        source_url = entry.get("webpage_url") or entry.get("url")
+        if source_id and (not source_url or str(source_url) == str(source_id)):
+            source_url = f"https://www.youtube.com/watch?v={source_id}"
         if not source_url or not source_id:
             continue
         results.append(
