@@ -2026,8 +2026,10 @@ export function App() {
       );
 
       if (stillCurrent?.status === 'completed' && stillCurrent.score) {
-        pendingAutoAdvanceRef.current = null;
-        startNextSong();
+        const advanced = startNextSong();
+        if (advanced) {
+          pendingAutoAdvanceRef.current = null;
+        }
       }
     }, 3500);
 
@@ -2048,10 +2050,12 @@ export function App() {
     });
   }
 
-  function startNextSong() {
-    if (session?.queue.some((entry) => entry.status === 'playing')) return;
+  function startNextSong(): boolean {
+    if (session?.queue.some((entry) => entry.status === 'playing')) return false;
     const next = session?.queue.find((entry) => entry.status === 'ready');
-    if (next) setQueueStatus(next.id, 'playing');
+    if (!next) return false;
+    setQueueStatus(next.id, 'playing');
+    return true;
   }
 
   function finishCurrentSong() {
