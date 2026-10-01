@@ -340,6 +340,7 @@ function QueueList({
   onRemove: (queueEntryId: string) => void;
   onPrepare: (queueEntryId: string, source: QueueEntry) => void;
   onChangeKey: (queueEntryId: string, entry: QueueEntry, targetKey: string, restartPlayback?: boolean) => Promise<boolean> | void;
+  changingKeyId: string | null;
 }) {
   if (session.queue.length === 0) {
     return <div className="empty-queue">A fila está vazia. A primeira música pode ser adicionada pelo celular de quem vai cantar.</div>;
@@ -437,7 +438,6 @@ function SingerMicrophone({
   transport: WebSocketTransport | null;
   signals: Array<{ id?: string; payload?: { command?: string; data?: WebRtcSignal } }>;
   onChangeKey: (queueEntryId: string, entry: QueueEntry, targetKey: string, restartPlayback?: boolean) => Promise<boolean> | void;
-  changingKeyId: string | null;
 }) {
   const playing = session.queue.find((entry) => entry.status === 'playing') ?? null;
   const tv = session.participants.find((participant) => participant.role === 'tv');
@@ -912,8 +912,6 @@ function SingerMicrophone({
       )}
 
       {showManualTone && playing && (
-        <div className="tone-manual">
-          <label>      {showManualTone && playing && (
         <div className="tone-manual">
           <label>
             <span>🎹 Escolha o tom</span>
