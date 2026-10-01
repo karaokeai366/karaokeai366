@@ -328,26 +328,78 @@ function SingerMicrophone({
 }) {
   const playing = session.queue.find((entry) => entry.status === 'playing') ?? null;
   const tv = session.participants.find((participant) => participant.role === 'tv');
+
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
   const handledSignalsRef = useRef(new Set<string>());
+
+  const pitchSamplesRef = useRef<PitchSample[]>([]);
+  const referenceNotesRef = useRef<MelodyReferenceNote[]>([]);
+  const analysisFrameRef = useRef<number | null>(null);
+  const analysisContextRef = useRef<AudioContext | null>(null);
+  const performanceRef = useRef<{ queueEntryId: string; performanceId: string } | null>(null);
+  const previousPlayingIdRef = useRef<string | null>(null);
+
   const [active, setActive] = useState(false);
   const [error, setError] = useState('');
   const [supported, setSupported] = useState(true);
 
-  const stop = () => {
+  function stop() {
     peerRef.current?.close();
     peerRef.current = null;
+
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+
+    if (analysisFrameRef.current !== null) {
+      window.cancelAnimationFrame(analysisFrameRef.current);
+      analysisFrameRef.current = null;
+    }
+
+    analysisContextRef.current?.close().catch(() => undefined);
+    analysisContextRef.current = null;
+
+    pitchSamplesRef.current = [];
+    referenceNotesRef.current = [];
+    performanceRef.current = null;
     setActive(false);
-  };
+  }
+
+  function finishPerformance() {
+    if (!transport || !performanceRef.current) return;
+    if (referenceNotesRef.current.length === 0 || pitchSamplesRef.current.length === 0) return;
+
+    try {
+      const score: PerformanceScore = scorePerformance(
+        pitchSamplesRef.current,
+        referenceNotesRef.current
+      );
+
+      transport.sendRaw('performance.complete', session.sessionId, participantId, {
+        queueEntryId: performanceRef.current.queueEntryId,
+        performanceId: performanceRef.current.performanceId,
+        score
+      });
+    } catch {
+      // A disconnected transport must not break the singer UI.
+    }
+  }
 
   useEffect(() => {
     setSupported(isWebRtcSupported());
     return stop;
   }, []);
+
+  useEffect(() => {
+    const previousId = previousPlayingIdRef.current;
+
+    if (previousId && previousId !== playing?.id) {
+      finishPerformance();
+    }
+
+    previousPlayingIdRef.current = playing?.id ?? null;
+  }, [playing?.id]);
 
   useEffect(() => {
     if (!playing || playing.ownerParticipantId !== participantId || !active) {
@@ -369,6 +421,7 @@ function SingerMicrophone({
     if (!answer || !peerRef.current) return;
 
     handledSignalsRef.current.add(answerSignal.id!);
+
     peerRef.current.setRemoteDescription(answer)
       .then(async () => {
         for (const candidate of pendingIceRef.current) {
@@ -379,7 +432,7 @@ function SingerMicrophone({
       .catch(() => {
         setError('Não foi possível negociar o áudio com a TV.');
       });
-  }, [signals, playing, participantId, active, tv?.id]);
+  }, [signals, playing?.id, participantId, active, tv?.id]);
 
   useEffect(() => {
     const iceMessage = signals.find((message) =>
@@ -391,9 +444,10 @@ function SingerMicrophone({
     );
 
     if (!iceMessage?.id || !iceMessage.payload?.data?.candidate) return;
-    handledSignalsRef.current.add(iceMessage.id);
 
+    handledSignalsRef.current.add(iceMessage.id);
     const candidate = iceMessage.payload.data.candidate;
+
     if (peerRef.current?.remoteDescription) {
       peerRef.current.addIceCandidate(candidate).catch(() => {
         pendingIceRef.current.push(candidate);
@@ -426,6 +480,48 @@ function SingerMicrophone({
       setError('');
       stop();
 
+      let referenceNotes: MelodyReferenceNote[] = [];
+
+      if (playing.manifestUrl) {
+        const manifest = await getSongAssetManifest(playing.manifestUrl);
+        const melodyUrl = resolveSongAssetUrl(
+          playing.manifestUrl,
+          manifest.files.melodyJson
+        );
+
+        if (melodyUrl) {
+          const melodyResponse = await fetch(melodyUrl);
+          if (melodyResponse.ok) {
+            const melody = await melodyResponse.json();
+
+            if (Array.isArray(melody?.notes)) {
+              referenceNotes = melody.notes
+                .filter((note: unknown): note is MelodyReferenceNote =>
+                  Boolean(note)
+                  && typeof (note as { start?: unknown }).start === 'number'
+                  && typeof (note as { end?: unknown }).end === 'number'
+                  && typeof (note as { midi?: unknown }).midi === 'number'
+                )
+                .map((note) => ({
+                  start: note.start,
+                  end: note.end,
+                  midi: note.midi,
+                  confidence: note.confidence
+                }));
+            }
+          }
+        }
+      }
+
+      pitchSamplesRef.current = [];
+      referenceNotesRef.current = referenceNotes;
+
+      const startedAt = playing.playbackStartedAt ?? Date.now();
+      performanceRef.current = {
+        queueEntryId: playing.id,
+        performanceId: playing.id + '-' + startedAt
+      };
+
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -435,7 +531,45 @@ function SingerMicrophone({
         },
         video: false
       });
+
       streamRef.current = stream;
+
+      const AudioContextCtor = window.AudioContext
+        ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+
+      if (AudioContextCtor) {
+        const analysisContext = new AudioContextCtor();
+        analysisContextRef.current = analysisContext;
+
+        if (analysisContext.state === 'suspended') {
+          await analysisContext.resume();
+        }
+
+        const source = analysisContext.createMediaStreamSource(stream);
+        const analyser = analysisContext.createAnalyser();
+        analyser.fftSize = 2048;
+        analyser.smoothingTimeConstant = 0.08;
+        source.connect(analyser);
+
+        const buffer = new Float32Array(analyser.fftSize);
+
+        const sampleLoop = () => {
+          analyser.getFloatTimeDomainData(buffer);
+          const detection = estimatePitch(buffer, analysisContext.sampleRate);
+
+          if (detection) {
+            pushPitchSample(
+              pitchSamplesRef.current,
+              Math.max(0, (Date.now() - startedAt) / 1000),
+              detection
+            );
+          }
+
+          analysisFrameRef.current = window.requestAnimationFrame(sampleLoop);
+        };
+
+        sampleLoop();
+      }
 
       const peer = new RTCPeerConnection(getWebRtcConfiguration());
       peerRef.current = peer;
@@ -444,6 +578,7 @@ function SingerMicrophone({
 
       peer.onicecandidate = (event) => {
         if (!event.candidate || !transport) return;
+
         dispatchWebRtcSignal(transport, session, participantId, {
           kind: 'ice-candidate',
           fromParticipantId: participantId,
@@ -481,13 +616,20 @@ function SingerMicrophone({
       <div>
         <span className="eyebrow">🎙️ SEU MICROFONE</span>
         <strong>{active ? 'Microfone conectado à TV' : 'Sua voz pode ir para o palco'}</strong>
+        {referenceNotesRef.current.length > 0 && <small>A avaliação será calculada ao finalizar a música.</small>}
         {!supported && <small>Este dispositivo/navegador não oferece WebRTC.</small>}
       </div>
+
       {!active ? (
-        <button className="secondary" onClick={start} disabled={!supported}>🎙️ Ativar microfone</button>
+        <button className="secondary" onClick={start} disabled={!supported}>
+          🎙️ Ativar microfone
+        </button>
       ) : (
-        <button className="secondary" onClick={stop}>⏹ Parar microfone</button>
+        <button className="secondary" onClick={stop}>
+          ⏹ Parar microfone
+        </button>
       )}
+
       {error && <small className="microphone-error">{error}</small>}
     </div>
   );
