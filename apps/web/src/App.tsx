@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import type { QueueEntry, SessionState } from './domain';
 import {
@@ -10,7 +10,7 @@ import {
   getLocalSession
 } from './session';
 import { WebSocketTransport } from './wsTransport';
-import { getSongPreparationStatus, searchSongs, startSongPreparation } from './mediaClient';
+import { getSongAssetManifest, getSongPreparationStatus, resolveSongAssetUrl, searchSongs, startSongPreparation } from './mediaClient';
 import type { SongSearchResult } from '../../../packages/media/src/song';
 
 type View = 'home' | 'host' | 'join' | 'participant' | 'tv';
@@ -297,6 +297,212 @@ function QueueList({
         );
       })}
     </div>
+  );
+}
+
+function TvStage({ session }: { session: SessionState }) {
+  const playing = session.queue.find((entry) => entry.status === 'playing') ?? null;
+  const upcoming = session.queue.filter(
+    (entry) => entry.status === 'ready' || entry.status === 'playing' || entry.status === 'preparing'
+  );
+  const owner = playing
+    ? session.participants.find((participant) => participant.id === playing.ownerParticipantId)
+    : null;
+
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [manifest, setManifest] = useState<import('../../../packages/media/src/song').SongAssetManifest | null>(null);
+  const [lyricsLines, setLyricsLines] = useState<Array<{ start: number; text: string }>>([]);
+  const [elapsed, setElapsed] = useState(0);
+  const [audioEnabled, setAudioEnabled] = useState(false);
+  const [audioError, setAudioError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    setManifest(null);
+    setLyricsLines([]);
+    setAudioError('');
+
+    if (!playing?.manifestUrl) return;
+
+    getSongAssetManifest(playing.manifestUrl)
+      .then((nextManifest) => {
+        if (cancelled) return;
+        setManifest(nextManifest);
+
+        const lyricsUrl = resolveSongAssetUrl(
+          playing.manifestUrl!,
+          nextManifest.files.lyricsJson
+        );
+
+        if (!lyricsUrl) return;
+
+        return fetch(lyricsUrl)
+          .then((response) => response.ok ? response.json() : null)
+          .then((lyrics) => {
+            if (cancelled) return;
+            const lines = Array.isArray(lyrics?.lines)
+              ? lyrics.lines
+                  .filter((line: unknown): line is { start: number; text: string } =>
+                    Boolean(line)
+                    && typeof (line as { start?: unknown }).start === 'number'
+                    && typeof (line as { text?: unknown }).text === 'string'
+                  )
+                  .sort((left, right) => left.start - right.start)
+              : [];
+            setLyricsLines(lines);
+          });
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setAudioError(error instanceof Error ? error.message : 'Não foi possível carregar o SongAsset.');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [playing?.id, playing?.manifestUrl]);
+
+  useEffect(() => {
+    const update = () => {
+      if (!playing?.playbackStartedAt) {
+        setElapsed(0);
+        return;
+      }
+      setElapsed(Math.max(0, (Date.now() - playing.playbackStartedAt) / 1000));
+    };
+
+    update();
+    const timer = window.setInterval(update, 250);
+    return () => window.clearInterval(timer);
+  }, [playing?.id, playing?.playbackStartedAt]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !manifest || !playing?.manifestUrl) return;
+
+    const sourceUrl = resolveSongAssetUrl(playing.manifestUrl, manifest.files.instrumental);
+    if (!sourceUrl) return;
+
+    audio.src = sourceUrl;
+    audio.load();
+
+    if (audioEnabled) {
+      audio.currentTime = elapsed;
+      audio.play().catch(() => {
+        setAudioEnabled(false);
+        setAudioError('O navegador bloqueou a reprodução automática. Toque em “Ativar áudio”.');
+      });
+    }
+
+    return () => {
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
+    };
+  }, [manifest, playing?.id]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !audioEnabled || !playing?.playbackStartedAt) return;
+
+    const drift = Math.abs(audio.currentTime - elapsed);
+    if (drift > 0.75) {
+      audio.currentTime = elapsed;
+    }
+  }, [elapsed, audioEnabled, playing?.playbackStartedAt]);
+
+  const currentLineIndex = lyricsLines.reduce(
+    (index, line, itemIndex) => (line.start <= elapsed ? itemIndex : index),
+    -1
+  );
+  const currentLine = currentLineIndex >= 0 ? lyricsLines[currentLineIndex] : null;
+  const nextLine = currentLineIndex >= 0 ? lyricsLines[currentLineIndex + 1] : lyricsLines[0];
+
+  function enableAudio() {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    audio.currentTime = elapsed;
+    audio.play()
+      .then(() => {
+        setAudioEnabled(true);
+        setAudioError('');
+      })
+      .catch(() => {
+        setAudioError('Não foi possível iniciar o áudio nesta tela.');
+      });
+  }
+
+  return (
+    <main className="tv-stage">
+      <audio ref={audioRef} preload="auto" />
+      <header className="tv-topbar">
+        <div className="tv-brand"><span className="brand-mark">🎤</span><strong>KaraokeAI</strong></div>
+        <div className="tv-session">
+          {audioEnabled ? '🔊 ÁUDIO ATIVO' : '🔇 ÁUDIO DESATIVADO'} · {session.sessionId.slice(-8).toUpperCase()}
+        </div>
+      </header>
+
+      <section className="tv-main">
+        <div className="tv-hero">
+          {playing ? (
+            <>
+              <div className="tv-cover">
+                {playing.thumbnailUrl ? <img src={playing.thumbnailUrl} alt="" /> : <span>🎵</span>}
+              </div>
+              <div className="tv-copy">
+                <span className="eyebrow">🎤 AGORA NO PALCO</span>
+                <h1>{playing.title}</h1>
+                <h2>{playing.artist ?? 'Artista não informado'}</h2>
+                <div className="tv-singer">🎙️ {owner?.name ?? 'Cantor'}</div>
+
+                {currentLine ? (
+                  <div className="tv-lyrics">
+                    <div className="tv-lyrics-current">{currentLine.text}</div>
+                    {nextLine && <div className="tv-lyrics-next">{nextLine.text}</div>}
+                  </div>
+                ) : (
+                  <div className="tv-lyrics-empty">
+                    {manifest?.preparation.lyrics === 'ready'
+                      ? 'Preparando a letra sincronizada…'
+                      : 'Letra sincronizada não disponível para esta versão.'}
+                  </div>
+                )}
+
+                <div className="tv-playback">
+                  <div className="tv-time">{Math.floor(elapsed / 60)}:{String(Math.floor(elapsed % 60)).padStart(2, '0')}</div>
+                  {!audioEnabled && (
+                    <button className="tv-audio-button" onClick={enableAudio}>🔊 Ativar áudio</button>
+                  )}
+                </div>
+
+                {audioError && <div className="tv-audio-error">{audioError}</div>}
+              </div>
+            </>
+          ) : (
+            <div className="tv-waiting">
+              <span className="tv-mic">🎤</span>
+              <span className="eyebrow">PALCO PRONTO</span>
+              <h1>Aguardando a próxima música</h1>
+              <p>O anfitrião inicia a apresentação pelo painel de controle.</p>
+              {!audioEnabled && <button className="tv-audio-button" onClick={enableAudio}>🔊 Ativar áudio da TV</button>}
+            </div>
+          )}
+        </div>
+
+        <aside className="tv-queue">
+          <div className="tv-queue-heading"><span className="eyebrow">FILA</span><strong>{upcoming.length}</strong></div>
+          {upcoming.slice(0, 6).map((entry, index) => (
+            <div className={\`tv-queue-row \${entry.status === 'playing' ? 'active' : ''}\`} key={entry.id}>
+              <span>{index + 1}</span>
+              <div className="tv-queue-thumb">{entry.thumbnailUrl ? <img src={entry.thumbnailUrl} alt="" /> : '🎵'}</div>
+              <div><strong>{entry.title}</strong><small>{entry.artist ?? 'Artista não informado'}</small></div>
+            </div>
+          ))}
+        </aside>
+      </section>
+    </main>
   );
 }
 
@@ -615,51 +821,7 @@ export function App() {
   const tvJoinUrl = session ? buildTvJoinUrl(session) : '';
 
   if (view === 'tv' && session) {
-    const playing = session.queue.find((entry) => entry.status === 'playing') ?? null;
-    const upcoming = session.queue.filter((entry) => entry.status === 'ready' || entry.status === 'playing' || entry.status === 'preparing');
-
-    return (
-      <main className="tv-stage">
-        <header className="tv-topbar">
-          <div className="tv-brand"><span className="brand-mark">🎤</span><strong>KaraokeAI</strong></div>
-          <div className="tv-session">{session.sessionId.slice(-8).toUpperCase()}</div>
-        </header>
-        <section className="tv-main">
-          <div className="tv-hero">
-            {playing ? (
-              <>
-                <div className="tv-cover">
-                  {playing.thumbnailUrl ? <img src={playing.thumbnailUrl} alt="" /> : <span>🎵</span>}
-                </div>
-                <div className="tv-copy">
-                  <span className="eyebrow">🎤 AGORA NO PALCO</span>
-                  <h1>{playing.title}</h1>
-                  <h2>{playing.artist ?? 'Artista não informado'}</h2>
-                  <div className="tv-live-pill">● AO VIVO</div>
-                </div>
-              </>
-            ) : (
-              <div className="tv-waiting">
-                <span className="tv-mic">🎤</span>
-                <span className="eyebrow">PALCO PRONTO</span>
-                <h1>Aguardando a próxima música</h1>
-                <p>O anfitrião inicia a apresentação pelo painel de controle.</p>
-              </div>
-            )}
-          </div>
-          <aside className="tv-queue">
-            <div className="tv-queue-heading"><span className="eyebrow">FILA</span><strong>{upcoming.length}</strong></div>
-            {upcoming.slice(0, 6).map((entry, index) => (
-              <div className={`tv-queue-row ${entry.status === 'playing' ? 'active' : ''}`} key={entry.id}>
-                <span>{index + 1}</span>
-                <div className="tv-queue-thumb">{entry.thumbnailUrl ? <img src={entry.thumbnailUrl} alt="" /> : '🎵'}</div>
-                <div><strong>{entry.title}</strong><small>{entry.artist ?? 'Artista não informado'}</small></div>
-              </div>
-            ))}
-          </aside>
-        </section>
-      </main>
-    );
+    return <TvStage session={session} />;
   }
 
   if (view === 'home') {
