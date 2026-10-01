@@ -1053,14 +1053,15 @@ function TvStage({
   const lastCompleted = [...session.queue]
     .reverse()
     .find((entry) => entry.status === 'completed' && entry.score);
-  const latestRoundResult = Object.entries(session.roundResultsByParticipant ?? {})
+  const roundResults = Object.entries(session.roundResultsByParticipant ?? {})
     .map(([participantId, result]) => ({
       participantId,
       result,
       participant: session.participants.find((item) => item.id === participantId)
     }))
     .filter((item) => item.result && item.result.roundId === session.roundId)
-    .sort((left, right) => right.result.updatedAt - left.result.updatedAt)[0] ?? null;
+    .sort((left, right) => right.result.updatedAt - left.result.updatedAt);
+  const latestRoundResult = roundResults[0] ?? null;
   const upcoming = session.queue.filter(
     (entry) => entry.status === 'ready' || entry.status === 'playing' || entry.status === 'preparing'
   );
@@ -1502,6 +1503,18 @@ function TvStage({
                       <span key={item.queueEntryId}>Música {index + 1}: <strong>{item.score}</strong></span>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {roundResults.length > 1 && (
+                <div className="tv-round-participants">
+                  <span className="eyebrow">OUTRAS CONCLUSÕES</span>
+                  {roundResults.slice(1).filter((item) => item.result.finished).map((item) => (
+                    <div className="tv-round-participant" key={item.participantId}>
+                      <span>🎙️ {item.participant?.name ?? 'Participante'}</span>
+                      <strong>{item.result.score ?? 0}/100</strong>
+                    </div>
+                  ))}
                 </div>
               )}
 
