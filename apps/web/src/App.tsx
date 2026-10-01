@@ -73,7 +73,7 @@ function songGroupKey(result: SongSearchResult): string | null {
   const artist = normalizeSearchText(result.artist);
 
   if (!title || !artist) return null;
-  return \`\${title}::\${artist}\`;
+  return `${title}::${artist}`;
 }
 
 function groupSearchResults(results: SongSearchResult[]): SongSearchResult[][] {
