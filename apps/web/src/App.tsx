@@ -690,13 +690,15 @@ export function App() {
       <main className="app-shell">
         <header className="topbar"><div className="brand"><span className="brand-mark">🎤</span><div><strong>KaraokeAI</strong><small>entrar na sessão</small></div></div></header>
         <section className="panel narrow">
-          <span className="eyebrow">ENTRAR NA SESSÃO</span>
+          <span className="eyebrow">{joinParams.tv ? 'TELA DA TV' : 'ENTRAR NA SESSÃO'}</span>
           <h2>{joinParams.tv ? 'Conectar a TV' : 'Quem vai cantar?'}</h2>
           {joinParams.sessionId ? (
             <>
               <p className="muted">Sessão: <strong>{joinParams.sessionId.slice(-8).toUpperCase()}</strong></p>
-              <input value={joinName} onChange={(e) => setJoinName(e.target.value)} placeholder="Seu nome" maxLength={30} autoFocus onKeyDown={(e) => e.key === 'Enter' && handleJoin()} />
-              <button className="primary full" onClick={handleJoin}>Entrar</button>
+              {!joinParams.tv && (
+                <input value={joinName} onChange={(e) => setJoinName(e.target.value)} placeholder="Seu nome" maxLength={30} autoFocus onKeyDown={(e) => e.key === 'Enter' && handleJoin()} />
+              )}
+              <button className="primary full" onClick={handleJoin}>{joinParams.tv ? 'Conectar TV' : 'Entrar'}</button>
               {connection === 'connecting' && <div className="connecting-text">Conectando à sessão…</div>}
               {error && <div className="global-error">{error}</div>}
             </>
