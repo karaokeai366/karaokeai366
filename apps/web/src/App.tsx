@@ -352,6 +352,7 @@ function QueueList({
       {session.queue.map((entry, index) => {
         const owner = session.participants.find((participant) => participant.id === entry.ownerParticipantId);
         const canRemove = entry.ownerParticipantId === currentParticipantId || session.hostParticipantId === currentParticipantId;
+        const canChangeKey = canRemove;
 
         return (
           <div className="queue-row" key={entry.id}>
@@ -389,7 +390,7 @@ function QueueList({
             {entry.status === 'ready' && (
               <div className="queue-ready-controls">
                 <span className="queue-status ready">✅ Pronta</span>
-                {entry.assetId && (
+                {entry.assetId && canChangeKey && (
                   <label className="queue-key-select">
                     <span>{keyLabel(entry.selectedKey ?? entry.originalKey)}</span>
                     <select
@@ -562,7 +563,6 @@ function SingerMicrophone({
       toneSuggestionCheckedRef.current = false;
       toneWindowRef.current = { start: 15, end: 90 };
       setToneSuggestion(null);
-      setAppliedTone(null);
       setError('');
     }
 
@@ -2136,12 +2136,9 @@ export function App() {
                       {count}
                     </button>
                   ))}
-                  <button
-                    type="button"
-                    className={`round-preset ${[1, 3, 5, 10].includes(Number(roundCount)) ? '' : 'selected'}`}
-                  >
-                    Personalizada
-                  </button>
+                  <span className="round-preset round-preset-custom">
+                    Personalizada no campo abaixo
+                  </span>
                 </div>
                 <div className="round-count">
                   <input type="number" min="1" max="100" value={roundCount} onChange={(e) => setRoundCount(e.target.value)} />
