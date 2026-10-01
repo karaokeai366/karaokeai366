@@ -214,6 +214,12 @@ wss.on('connection', (socket) => {
                 ...(message.payload?.manifestUrl
                   ? { manifestUrl: String(message.payload.manifestUrl).slice(0, 2000) }
                   : {}),
+                ...(message.payload?.originalKey
+                  ? { originalKey: String(message.payload.originalKey).slice(0, 16) }
+                  : {}),
+                ...(message.payload?.selectedKey
+                  ? { selectedKey: String(message.payload.selectedKey).slice(0, 8) }
+                  : {}),
                 ...(message.payload?.preparationStage
                   ? { preparationStage: String(message.payload.preparationStage).slice(0, 40) }
                   : {}),
