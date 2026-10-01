@@ -15,6 +15,7 @@ export type MessageType =
   | 'queue.remove'
   | 'queue.status.set'
   | 'queue.restart'
+  | 'playback.finished'
   | 'performance.complete'
   | 'round.configure';
 
