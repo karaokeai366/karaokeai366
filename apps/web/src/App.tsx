@@ -9,7 +9,7 @@ import {
   getLocalSession
 } from './session';
 import { WebSocketTransport } from './wsTransport';
-import { searchSongs } from './mediaClient';
+import { prepareSong, searchSongs } from './mediaClient';
 import type { SongSearchResult } from '../../../packages/media/src/song';
 
 type View = 'home' | 'host' | 'join' | 'participant';
@@ -33,11 +33,13 @@ function scoreLabel(score: number): string {
 function QueueList({
   session,
   currentParticipantId,
-  onRemove
+  onRemove,
+  onPrepare
 }: {
   session: SessionState;
   currentParticipantId: string;
   onRemove: (queueEntryId: string) => void;
+  onPrepare: (queueEntryId: string, sourceUrl: string) => void;
 }) {
   if (session.queue.length === 0) {
     return <div className="empty-queue">A fila está vazia. A primeira música pode ser adicionada pelo celular de quem vai cantar.</div>;
@@ -58,6 +60,15 @@ function QueueList({
               <small>{entry.artist ?? 'Artista não informado'} · {owner?.name ?? 'Participante'}</small>
             </div>
             {entry.requestedKey && <span className="queue-key">Tom {entry.requestedKey}</span>}
+            {entry.sourceUrl && entry.status === 'queued' && (
+              <button
+                className="queue-prepare"
+                onClick={() => onPrepare(entry.id, entry.sourceUrl!)}
+              >
+                Preparar
+              </button>
+            )}
+            {entry.status !== 'queued' && <span className={`queue-status ${entry.status}`}>{entry.status === 'preparing' ? 'Preparando…' : entry.status === 'ready' ? 'Pronta' : entry.status}</span>}
             {canRemove && (
               <button className="queue-remove" onClick={() => onRemove(entry.id)} aria-label={`Remover ${entry.title}`}>
                 ×
@@ -279,6 +290,34 @@ export function App() {
     }
   }
 
+  async function prepareQueueEntry(queueEntryId: string, sourceUrl: string) {
+    if (!session || !transport || !currentParticipantId) return;
+
+    try {
+      transport.sendRaw('queue.status.set', session.sessionId, currentParticipantId, {
+        queueEntryId,
+        status: 'preparing'
+      });
+
+      await prepareSong(sourceUrl, 'video');
+
+      transport.sendRaw('queue.status.set', session.sessionId, currentParticipantId, {
+        queueEntryId,
+        status: 'ready'
+      });
+    } catch (err) {
+      try {
+        transport.sendRaw('queue.status.set', session.sessionId, currentParticipantId, {
+          queueEntryId,
+          status: 'cancelled'
+        });
+      } catch {
+        // Preserve the original media worker error.
+      }
+      setError(err instanceof Error ? err.message : 'Não foi possível preparar a música.');
+    }
+  }
+
   function configureRound() {
     if (!session || !transport || !currentParticipantId) return;
 
@@ -391,7 +430,7 @@ export function App() {
                 ))}
               </div>
             )}
-            <QueueList session={session} currentParticipantId={currentParticipantId} onRemove={removeQueueEntry} />
+            <QueueList session={session} currentParticipantId={currentParticipantId} onRemove={removeQueueEntry} onPrepare={prepareQueueEntry} />
           </div>
           <div className="panel">
             <div className="panel-heading"><div><span className="eyebrow">PARTICIPANTES</span><h3>Quem está na sessão</h3></div><span className="tag">PARTICIPANTE</span></div>
@@ -497,7 +536,7 @@ export function App() {
                 <button className="primary" onClick={addSongToQueue}>Adicionar</button>
               </div>
             </details>
-            <QueueList session={session!} currentParticipantId={currentParticipantId} onRemove={removeQueueEntry} />
+            <QueueList session={session!} currentParticipantId={currentParticipantId} onRemove={removeQueueEntry} onPrepare={prepareQueueEntry} />
           </div>
 
 
