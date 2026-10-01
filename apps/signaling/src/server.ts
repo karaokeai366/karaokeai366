@@ -126,6 +126,11 @@ function getPlaybackPositionSeconds(item: any): number {
 function canAutoAdvanceEntry(state: any, entry: any): boolean {
   if (entry?.status !== 'ready') return false;
 
+  const participant = Array.isArray(state?.participants)
+    ? state.participants.find((item: any) => item.id === entry.ownerParticipantId)
+    : null;
+  if (!participant || participant.role === 'tv' || participant.online === false) return false;
+
   const mode = state?.roundMode;
   if (mode?.kind !== 'songs') return true;
 
@@ -409,6 +414,14 @@ wss.on('connection', (socket) => {
 
         if (currentState.status === 'finished' && nextStatus === 'playing') {
           reject(socket, 'A apresentação foi encerrada. Configure uma nova rodada antes de iniciar outra música.');
+          return;
+        }
+
+        if (
+          nextStatus === 'playing'
+          && currentState.participants?.find((participant: any) => participant.id === entry.ownerParticipantId)?.online === false
+        ) {
+          reject(socket, 'O participante desta música está offline.');
           return;
         }
 
