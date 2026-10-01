@@ -1,3 +1,5 @@
+import type { PerformanceScore } from '../../../packages/session/src/scoring';
+
 export type Role = 'host' | 'participant' | 'tv';
 
 export type RoundMode =
