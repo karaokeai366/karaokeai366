@@ -545,7 +545,7 @@ function SingerMicrophone({
                   && typeof (note as { end?: unknown }).end === 'number'
                   && typeof (note as { midi?: unknown }).midi === 'number'
                 )
-                .map((note) => ({
+                .map((note: MelodyReferenceNote) => ({
                   start: note.start,
                   end: note.end,
                   midi: note.midi,
@@ -949,9 +949,10 @@ function TvStage({
     if (!voiceSourceRef.current) {
       voiceSourceRef.current.crossOrigin = 'anonymous';
       const voiceGain = context.createGain();
-      voiceSourceRef.current = context.createMediaElementSource(remoteAudioRef.current);
+      const voiceSource = context.createMediaElementSource(remoteAudioRef.current);
+      voiceSourceRef.current = voiceSource;
       voiceGainRef.current = voiceGain;
-      voiceSourceRef.current.connect(voiceGain);
+      voiceSource.connect(voiceGain);
       voiceGain.connect(context.destination);
     }
 
