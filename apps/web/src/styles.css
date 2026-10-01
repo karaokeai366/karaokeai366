@@ -184,3 +184,49 @@ button { border: 0; border-radius: 14px; min-height: 48px; padding: 0 18px; colo
 .queue-progress { height: 5px; margin-top: 6px; overflow: hidden; border-radius: 999px; background: #1b2237; }
 .queue-progress span { display: block; height: 100%; border-radius: inherit; background: #6e78ff; transition: width .25s ease; }
 .queue-preparation small { display: block; margin-top: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #747e9b; font-size: 9px; }
+
+.tv-stage { min-height: 100vh; padding: 0 40px 50px; background: radial-gradient(circle at 50% -10%, #1c2450 0, #070a12 48%, #03050a 100%); }
+.tv-topbar { max-width: 1500px; height: 86px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; }
+.tv-brand { display: flex; align-items: center; gap: 12px; color: #eef0ff; font-size: 20px; }
+.tv-session { padding: 8px 12px; border: 1px solid #30385a; border-radius: 999px; color: #8992ad; font-size: 11px; letter-spacing: .08em; }
+.tv-main { max-width: 1500px; margin: 30px auto 0; display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 22px; align-items: stretch; }
+.tv-hero { min-height: 560px; display: grid; grid-template-columns: minmax(260px, 380px) minmax(0, 1fr); align-items: center; gap: 38px; padding: 42px; border: 1px solid #282f4a; border-radius: 30px; background: rgba(12, 16, 28, .84); box-shadow: 0 25px 80px rgba(0,0,0,.24); }
+.tv-cover { width: 100%; max-width: 380px; aspect-ratio: 1; overflow: hidden; border-radius: 24px; background: #13192b; display: grid; place-items: center; font-size: 70px; }
+.tv-cover img { width: 100%; height: 100%; object-fit: cover; }
+.tv-copy h1 { margin: 14px 0 8px; font-size: clamp(40px, 6vw, 84px); line-height: .96; letter-spacing: -.055em; }
+.tv-copy h2 { margin: 0; color: #b0b8d1; font-size: clamp(20px, 2vw, 30px); font-weight: 500; }
+.tv-live-pill { display: inline-flex; margin-top: 24px; padding: 9px 13px; border-radius: 999px; background: #1f1530; border: 1px solid #59317b; color: #e6c6ff; font-size: 11px; font-weight: 800; letter-spacing: .08em; }
+.tv-waiting { grid-column: 1 / -1; text-align: center; align-self: center; }
+.tv-mic { display: block; margin-bottom: 16px; font-size: 74px; }
+.tv-waiting h1 { margin: 12px 0 8px; font-size: clamp(34px, 5vw, 68px); letter-spacing: -.045em; }
+.tv-waiting p { margin: 0; color: #8f98b2; font-size: 18px; }
+.tv-queue { padding: 24px; border: 1px solid #282f4a; border-radius: 26px; background: rgba(10, 14, 25, .88); }
+.tv-queue-heading { display: flex; align-items: center; justify-content: space-between; padding-bottom: 16px; border-bottom: 1px solid #20263e; }
+.tv-queue-heading strong { font-size: 28px; }
+.tv-queue-row { display: grid; grid-template-columns: 24px 48px minmax(0, 1fr); gap: 10px; align-items: center; padding: 12px 0; border-bottom: 1px solid #1c2237; }
+.tv-queue-row > span { color: #666f8c; font-size: 12px; font-weight: 800; text-align: center; }
+.tv-queue-row.active { margin: 0 -10px; padding-left: 10px; padding-right: 10px; border-radius: 14px; background: #171d37; }
+.tv-queue-thumb { width: 48px; height: 48px; overflow: hidden; border-radius: 10px; background: #171d31; display: grid; place-items: center; }
+.tv-queue-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.tv-queue-row strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.tv-queue-row small { display: block; margin-top: 3px; color: #747d99; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tv-link-box { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding: 10px 12px; border: 1px solid #252d47; border-radius: 12px; background: #0d1220; width: fit-content; }
+.tv-link-box span { color: #aeb6cf; font-size: 11px; font-weight: 800; }
+.tv-link-box a { color: #929cff; text-decoration: none; font-size: 11px; font-weight: 700; }
+.tv-link-box a:hover { text-decoration: underline; }
+.host-stage-controls { display: flex; gap: 8px; margin-top: 14px; }
+.host-stage-controls button { min-height: 40px; font-size: 11px; }
+@media (max-width: 900px) {
+  .tv-stage { padding: 0 14px 30px; }
+  .tv-main { grid-template-columns: 1fr; }
+  .tv-hero { min-height: auto; grid-template-columns: 1fr; gap: 24px; padding: 24px; }
+  .tv-cover { max-width: 320px; justify-self: center; }
+}
+@media (max-width: 560px) {
+  .tv-topbar { height: 70px; }
+  .tv-session { display: none; }
+  .tv-copy h1 { font-size: 42px; }
+  .tv-waiting h1 { font-size: 36px; }
+  .tv-waiting p { font-size: 15px; }
+  .host-stage-controls { flex-direction: column; }
+}
