@@ -1156,6 +1156,7 @@ function TvStage({
     : null;
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const nextPreloadAudioRef = useRef<HTMLAudioElement | null>(null);
   const [manifest, setManifest] = useState<import('../../../packages/media/src/song').SongAssetManifest | null>(null);
   const [lyricsLines, setLyricsLines] = useState<Array<{ start: number; text: string }>>([]);
   const [elapsed, setElapsed] = useState(0);
@@ -1283,6 +1284,46 @@ function TvStage({
       setMicrophoneConnected(false);
     }
   }, [playing?.id]);
+
+  useEffect(() => {
+    const previous = nextPreloadAudioRef.current;
+    if (previous) {
+      previous.pause();
+      previous.removeAttribute('src');
+      previous.load();
+      nextPreloadAudioRef.current = null;
+    }
+
+    if (!nextEntry?.manifestUrl) return;
+
+    let cancelled = false;
+    const preload = async () => {
+      try {
+        const nextManifest = await getSongAssetManifest(nextEntry.manifestUrl!);
+        if (cancelled) return;
+
+        const instrumentalUrl = resolveSongAssetUrl(
+          nextEntry.manifestUrl!,
+          nextManifest.files.instrumental
+        );
+        if (!instrumentalUrl) return;
+
+        const audio = new Audio();
+        audio.preload = 'auto';
+        audio.src = instrumentalUrl;
+        audio.load();
+        nextPreloadAudioRef.current = audio;
+      } catch {
+        // O pré-carregamento é apenas uma otimização; a reprodução normal continua.
+      }
+    };
+
+    void preload();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [nextEntry?.id, nextEntry?.manifestUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1542,6 +1583,10 @@ function TvStage({
         window.clearTimeout(scheduledPlaybackRef.current);
         scheduledPlaybackRef.current = null;
       }
+      nextPreloadAudioRef.current?.pause();
+      nextPreloadAudioRef.current?.removeAttribute('src');
+      nextPreloadAudioRef.current?.load();
+      nextPreloadAudioRef.current = null;
       peerRef.current?.close();
       audioContextRef.current?.close().catch(() => undefined);
     };
