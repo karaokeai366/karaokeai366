@@ -39,6 +39,13 @@ export interface QueueRemoveRequest {
   queueEntryId: string;
 }
 
+export interface QueueStatusSetRequest {
+  queueEntryId: string;
+  status: 'queued' | 'preparing' | 'ready' | 'playing' | 'completed' | 'cancelled';
+  assetId?: string;
+  manifestUrl?: string;
+}
+
 export interface RoundConfigureRequest {
   mode: { kind: 'songs'; songCount: number } | { kind: 'open' };
 }
