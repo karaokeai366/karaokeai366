@@ -54,6 +54,8 @@ export interface QueueStatusSetRequest {
   preparationMessage?: string;
   playbackStartedAt?: number;
   durationSeconds?: number;
+  performanceId?: string;
+  attemptCancelReason?: 'restart' | 'key-test' | 'abandoned';
 }
 
 export interface RoundConfigureRequest {
