@@ -8,7 +8,7 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 
@@ -26,6 +26,16 @@ MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
 class PipelineError(RuntimeError):
     pass
+
+
+def report_progress(
+    progress: Callable[[str, int, str], None] | None,
+    stage: str,
+    percent: int,
+    message: str,
+) -> None:
+    if progress:
+        progress(stage, max(0, min(100, percent)), message)
 
 
 def run_command(args: list[str]) -> str:
@@ -589,6 +599,7 @@ def prepare_asset(
     source: dict[str, Any],
     media_kind: str,
     root: Path,
+    progress: Callable[[str, int, str], None] | None = None,
 ) -> dict[str, Any]:
     folder = root / asset_id
     folder.mkdir(parents=True, exist_ok=True)
@@ -597,7 +608,9 @@ def prepare_asset(
     if not (source_url.startswith("https://") or source_url.startswith("http://")):
         raise PipelineError("A fonte deve ser uma URL HTTP(S).")
 
+    report_progress(progress, "download", 5, "Baixando a música selecionada…")
     original = download_source(source_url, folder, media_kind)
+    report_progress(progress, "normalize", 25, "Normalizando o áudio…")
     normalized = folder / "mix.wav"
     duration_seconds = normalize_audio(original, normalized)
 
@@ -605,6 +618,7 @@ def prepare_asset(
     lyrics_lrc: str | None = None
     lyrics_json: str | None = None
 
+    report_progress(progress, "lyrics", 35, "Buscando letra sincronizada…")
     lyrics_data = fetch_lyrics(
         str(source.get("title") or ""),
         str(source.get("artist") or ""),
@@ -615,6 +629,7 @@ def prepare_asset(
         if lyrics_lrc or lyrics_json:
             lyric_state = "ready"
 
+    report_progress(progress, "cover", 45, "Preparando capa…")
     cover_name = download_cover(
         str(source.get("thumbnailUrl") or "").strip() or None,
         folder,
@@ -627,13 +642,16 @@ def prepare_asset(
     melody_state = "error"
     melody_payload: dict[str, Any] | None = None
 
+    report_progress(progress, "separation", 55, "Separando voz e instrumental…")
     vocals, instrumental = separate_sources(normalized, folder)
     separation_state = "ready"
 
+    report_progress(progress, "melody", 82, "Analisando melodia, tom e BPM…")
     melody_file = folder / "melody.json"
     melody_payload = analyze_melody(vocals, melody_file)
     melody_state = "ready"
 
+    report_progress(progress, "manifest", 94, "Montando o SongAsset…")
     manifest = build_manifest(
         asset_id,
         source,
@@ -659,4 +677,5 @@ def prepare_asset(
         encoding="utf-8",
     )
     manifest["files"]["manifest"] = relative_artifact(manifest_path, asset_id)
+    report_progress(progress, "ready", 100, "Música pronta para cantar.")
     return manifest
