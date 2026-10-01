@@ -2669,7 +2669,7 @@ export function App() {
             <span className="eyebrow">VOCÊ ESTÁ NA SESSÃO</span>
             <h2>Olá, {currentParticipant?.name ?? 'cantor'} 👋</h2>
             <p className="muted">Pesquise a música, confira a capa e a versão desejada e coloque-a na fila com um toque.</p>
-            <div className="connection-line"><span className={`connection-badge ${connection}`}>{connection === 'online' ? '🟢 conectado' : '🟡 conectando'}</span><span>{session.participants.length} participante(s)</span><span>· rodada {session.roundMode.kind === 'open' ? 'aberta' : `${session.roundMode.songCount} música(s)`}</span></div>{session.status === 'finished' && <span>· 🏁 encerrada</span>}
+            <div className="connection-line"><span className={`connection-badge ${connection}`}>{connection === 'online' ? '🟢 conectado' : '🟡 conectando'}</span><span>{session.participants.length} participante(s)</span><span>· rodada {session.roundMode.kind === 'open' ? 'aberta' : `${session.roundMode.songCount} música(s)`}{session.status === 'finished' && <span>· 🏁 encerrada</span>}</div>
           </div>
           <RoundProgress session={session} participantId={currentParticipantId} />
           <SingerNextUp
