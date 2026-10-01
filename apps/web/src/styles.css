@@ -117,6 +117,10 @@ button { border: 0; border-radius: 14px; min-height: 48px; padding: 0 18px; colo
 .search-group-heading strong { display: block; color: #e0e3f3; font-size: 13px; }
 .search-group-heading span { display: block; margin-top: 3px; color: #818aa6; font-size: 11px; }
 .version-count { display: inline-flex !important; margin: 0 !important; padding: 5px 8px; border: 1px solid #323b62; border-radius: 999px; color: #aeb8df !important; background: #141a2f; font-size: 10px !important; font-weight: 800; white-space: nowrap; }
+.search-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 4px; }
+.search-filter { min-height: 34px; padding: 0 11px; border-radius: 999px; background: #10162a; border: 1px solid #29304c; color: #8f98b3; font-size: 10px; font-weight: 800; }
+.search-filter:hover { border-color: #3a4672; color: #c7cde0; }
+.search-filter.selected { border-color: #6672ee; background: #1a2140; color: #e3e6ff; }
 .search-results-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 0 2px 4px; color: #c4c9dd; font-size: 12px; font-weight: 800; }
 .search-results-heading small { color: #707993; font-weight: 500; }
 .search-result { display: grid; grid-template-columns: 112px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 10px; border: 1px solid #232a45; border-radius: 16px; background: #0d1220; }
