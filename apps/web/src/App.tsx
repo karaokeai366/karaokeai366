@@ -30,6 +30,101 @@ function scoreLabel(score: number): string {
   return 'Limitada';
 }
 
+function formatDuration(durationSeconds?: number): string | null {
+  if (!durationSeconds || durationSeconds <= 0) return null;
+  const totalSeconds = Math.round(durationSeconds);
+  return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, '0')}`;
+}
+
+function versionLabels(result: SongSearchResult): string[] {
+  const text = `${result.title} ${result.channelName ?? ''}`.toLocaleLowerCase('pt-BR');
+  const labels: string[] = [];
+
+  if (/karaok[eê]|karaoke/.test(text)) labels.push('Karaokê');
+  if (/instrumental|playback|backing track|sem voz|no vocals/.test(text)) labels.push('Instrumental');
+  if (/ao vivo|aovivo|live|show/.test(text)) labels.push('Ao vivo');
+  if (/cover|vers[aã]o/.test(text)) labels.push('Cover');
+  if (/official|oficial|vevo/.test(text)) labels.push('Oficial');
+
+  return labels.slice(0, 2);
+}
+
+function sourceLabel(source?: string): string {
+  if (!source) return 'Fonte';
+  if (source === 'yt-dlp') return 'YouTube';
+  return source;
+}
+
+function SearchResults({
+  results,
+  onAdd
+}: {
+  results: SongSearchResult[];
+  onAdd: (result: SongSearchResult) => void;
+}) {
+  if (results.length === 0) return null;
+
+  return (
+    <div className="search-results">
+      <div className="search-results-heading">
+        <span>{results.length} resultado(s)</span>
+        <small>Escolha a versão correta antes de colocar na fila</small>
+      </div>
+      {results.map((result) => {
+        const tags = versionLabels(result);
+        const duration = formatDuration(result.durationSeconds);
+
+        return (
+          <article className="search-result" key={result.sourceId}>
+            <div className="result-thumb">
+              {result.thumbnailUrl ? (
+                <img src={result.thumbnailUrl} alt={`Capa de ${result.title}`} loading="lazy" />
+              ) : (
+                <span aria-hidden="true">🎵</span>
+              )}
+            </div>
+
+            <div className="result-info">
+              <strong title={result.title}>{result.title}</strong>
+              <span className="result-artist">
+                {result.artist ?? 'Artista não identificado'}
+              </span>
+              {tags.length > 0 && (
+                <div className="result-badges">
+                  {tags.map((tag) => <span className="result-badge" key={tag}>{tag}</span>)}
+                </div>
+              )}
+              <div className="result-meta">
+                {result.album && <span>Álbum: {result.album}</span>}
+                {duration && <span>{duration}</span>}
+                {result.channelName && result.channelName !== result.artist && (
+                  <span>Canal: {result.channelName}</span>
+                )}
+                <span>{sourceLabel(result.source)}</span>
+              </div>
+            </div>
+
+            <div className="result-actions">
+              <a
+                className="result-source"
+                href={result.sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+                title="Abrir a fonte da música"
+              >
+                Ver origem
+              </a>
+              <button className="secondary add-result" onClick={() => onAdd(result)}>
+                + Fila
+              </button>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
 function QueueList({
   session,
   currentParticipantId,
@@ -407,7 +502,7 @@ export function App() {
           <div className="panel participant-hero">
             <span className="eyebrow">VOCÊ ESTÁ NA SESSÃO</span>
             <h2>Olá, {currentParticipant?.name ?? 'cantor'} 👋</h2>
-            <p className="muted">A sessão está sendo coordenada pelo anfitrião. A pesquisa e a fila de músicas serão o próximo módulo.</p>
+            <p className="muted">Pesquise a música, confira a capa e a versão desejada e coloque-a na fila com um toque.</p>
             <div className="connection-line"><span className={`connection-badge ${connection}`}>{connection === 'online' ? '🟢 conectado' : '🟡 conectando'}</span><span>{session.participants.length} participante(s)</span><span>· rodada {session.roundMode.kind === 'open' ? 'aberta' : `${session.roundMode.songCount} música(s)`}</span></div>
           </div>
           <div className="panel">
@@ -431,46 +526,7 @@ export function App() {
                 {searching ? 'Pesquisando…' : 'Pesquisar'}
               </button>
             </div>
-            {searchResults.length > 0 && (
-              <div className="search-results">
-                <div className="search-results-heading">
-                  <span>{searchResults.length} resultado(s)</span>
-                  <small>Confira a versão antes de adicionar</small>
-                </div>
-                {searchResults.map((result) => (
-                  <article className="search-result" key={result.sourceId}>
-                    <div className="result-thumb">
-                      {result.thumbnailUrl ? (
-                        <img src={result.thumbnailUrl} alt={`Capa de ${result.title}`} loading="lazy" />
-                      ) : (
-                        <span aria-hidden="true">🎵</span>
-                      )}
-                    </div>
-                    <div className="result-info">
-                      <strong title={result.title}>{result.title}</strong>
-                      <span className="result-artist">{result.artist ?? 'Artista não identificado'}</span>
-                      <div className="result-meta">
-                        {result.album && <span>Álbum: {result.album}</span>}
-                        {result.durationSeconds && <span>{Math.floor(result.durationSeconds / 60)}:{String(Math.floor(result.durationSeconds % 60)).padStart(2, '0')}</span>}
-                        {result.channelName && result.channelName !== result.artist && <span>Canal: {result.channelName}</span>}
-                      </div>
-                    </div>
-                    <div className="result-actions">
-                      <a
-                        className="result-source"
-                        href={result.sourceUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        title="Abrir a fonte da música"
-                      >
-                        Ver origem
-                      </a>
-                      <button className="secondary add-result" onClick={() => addSearchResultToQueue(result)}>+ Fila</button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
+            <SearchResults results={searchResults} onAdd={addSearchResultToQueue} />
             {searchPerformed && !searching && searchResults.length === 0 && (
               <div className="search-empty">
                 <span aria-hidden="true">🔎</span>
@@ -553,7 +609,7 @@ export function App() {
               <div><span className="eyebrow">FILA COMPARTILHADA</span><h3>Adicione a primeira música</h3></div>
               <span className="tag">TESTE DO MVP</span>
             </div>
-            <p className="muted">Por enquanto o título é digitado manualmente. A busca em fontes de música e o pré-processamento entram no próximo módulo.</p>
+            <p className="muted">Pesquise por título e artista, confira a capa, a versão e a origem e adicione a música com um toque.</p>
             <div className="search-box">
               <input
                 value={searchQuery}
@@ -564,20 +620,7 @@ export function App() {
               />
               <button className="primary" onClick={searchMusic} disabled={searching}>{searching ? 'Pesquisando…' : 'Pesquisar'}</button>
             </div>
-            {searchResults.length > 0 && (
-              <div className="search-results">
-                {searchResults.map((result) => (
-                  <div className="search-result" key={result.sourceId}>
-                    <div className="result-thumb">{result.thumbnailUrl ? <img src={result.thumbnailUrl} alt="" loading="lazy" /> : '🎵'}</div>
-                    <div className="result-info">
-                      <strong>{result.title}</strong>
-                      <small>{result.artist ?? 'Artista não identificado'}{result.durationSeconds ? ` · ${Math.round(result.durationSeconds / 60)} min` : ''}</small>
-                    </div>
-                    <button className="secondary add-result" onClick={() => addSearchResultToQueue(result)}>+ Fila</button>
-                  </div>
-                ))}
-              </div>
-            )}
+            <SearchResults results={searchResults} onAdd={addSearchResultToQueue} />
             <details className="manual-add">
               <summary>Adicionar manualmente</summary>
               <div className="song-form">
