@@ -9,7 +9,7 @@ import {
   getLocalSession
 } from './session';
 import { WebSocketTransport } from './wsTransport';
-import { prepareSong, searchSongs } from './mediaClient';
+import { getSongPreparationStatus, searchSongs, startSongPreparation } from './mediaClient';
 import type { SongSearchResult } from '../../../packages/media/src/song';
 
 type View = 'home' | 'host' | 'join' | 'participant';
@@ -216,6 +216,21 @@ function SearchResults({
   );
 }
 
+function preparationStageLabel(stage?: string): string {
+  switch (stage) {
+    case 'download': return 'Baixando';
+    case 'normalize': return 'Normalizando';
+    case 'lyrics': return 'Buscando letra';
+    case 'cover': return 'Preparando capa';
+    case 'separation': return 'Separando voz';
+    case 'melody': return 'Analisando melodia';
+    case 'manifest': return 'Montando SongAsset';
+    case 'ready': return 'Pronta';
+    case 'error': return 'Erro';
+    default: return 'Preparando';
+  }
+}
+
 function QueueList({
   session,
   currentParticipantId,
@@ -260,7 +275,18 @@ function QueueList({
                 Preparar
               </button>
             )}
-            {entry.status !== 'queued' && <span className={`queue-status ${entry.status}`}>{entry.status === 'preparing' ? 'Preparando…' : entry.status === 'ready' ? 'Pronta' : entry.status}</span>}
+            {entry.status === 'preparing' && (
+              <div className="queue-preparation">
+                <div className="queue-preparation-line">
+                  <span>{preparationStageLabel(entry.preparationStage)}</span>
+                  <strong>{Math.round(entry.preparationProgress ?? 0)}%</strong>
+                </div>
+                <div className="queue-progress"><span style={{ width: `${Math.max(0, Math.min(100, entry.preparationProgress ?? 0))}%` }} /></div>
+                {entry.preparationMessage && <small>{entry.preparationMessage}</small>}
+              </div>
+            )}
+            {entry.status === 'ready' && <span className="queue-status ready">✅ Pronta{entry.assetId ? ' · Asset' : ''}</span>}
+            {entry.status === 'cancelled' && <span className="queue-status cancelled">Cancelada</span>}
             {canRemove && (
               <button className="queue-remove" onClick={() => onRemove(entry.id)} aria-label={`Remover ${entry.title}`}>
                 ×
@@ -497,7 +523,7 @@ export function App() {
         status: 'preparing'
       });
 
-      const prepared = await prepareSong({
+      const job = await startSongPreparation({
         sourceId: entry.sourceId,
         source: entry.source ?? 'youtube',
         title: entry.title,
@@ -506,12 +532,31 @@ export function App() {
         thumbnailUrl: entry.thumbnailUrl
       }, 'video');
 
-      transport.sendRaw('queue.status.set', session.sessionId, currentParticipantId, {
-        queueEntryId,
-        status: 'ready',
-        assetId: prepared.assetId,
-        manifestUrl: prepared.manifestUrl ?? prepared.files.manifest
-      });
+      let finished = false;
+      while (!finished) {
+        const status = await getSongPreparationStatus(job.jobId);
+
+        transport.sendRaw('queue.status.set', session.sessionId, currentParticipantId, {
+          queueEntryId,
+          status: status.status === 'error' ? 'cancelled' : status.status === 'ready' ? 'ready' : 'preparing',
+          ...(status.manifest?.assetId ? { assetId: status.manifest.assetId } : {}),
+          ...(status.manifestUrl ? { manifestUrl: status.manifestUrl } : {}),
+          preparationStage: status.stage,
+          preparationProgress: status.progress,
+          preparationMessage: status.message
+        });
+
+        if (status.status === 'ready') {
+          finished = true;
+          continue;
+        }
+
+        if (status.status === 'error') {
+          throw new Error(status.message || 'A preparação da música falhou.');
+        }
+
+        await new Promise((resolve) => window.setTimeout(resolve, 1000));
+      }
     } catch (err) {
       try {
         transport.sendRaw('queue.status.set', session.sessionId, currentParticipantId, {
