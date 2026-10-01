@@ -328,6 +328,18 @@ wss.on('connection', (socket) => {
           return;
         }
 
+        if (currentState.status === 'finished' && nextStatus === 'playing') {
+          reject(socket, 'A apresentação foi encerrada. Configure uma nova rodada antes de iniciar outra música.');
+          return;
+        }
+
+        if (nextStatus === 'playing' && queue.some((item: any) =>
+          item.status === 'playing' && item.id !== queueEntryId
+        )) {
+          reject(socket, 'Já existe outra música em reprodução.');
+          return;
+        }
+
         const requestedPerformanceId = String(
           message.payload?.performanceId ?? ''
         ).trim().slice(0, 160);
@@ -903,6 +915,10 @@ wss.on('connection', (socket) => {
         const currentState = session.state as any;
         if (!currentState || !Array.isArray(currentState.participants)) {
           reject(socket, 'Estado da sessão indisponível.');
+          return;
+        }
+        if (currentState.status === 'finished') {
+          reject(socket, 'A apresentação foi encerrada. Configure uma nova rodada antes de adicionar músicas.');
           return;
         }
 
