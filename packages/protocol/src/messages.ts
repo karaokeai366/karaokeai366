@@ -1,17 +1,18 @@
 export type MessageType =
-  | 'session.hello'
-  | 'session.join.request'
-  | 'session.join.accepted'
+  | 'session.create'
+  | 'session.join'
+  | 'session.created'
+  | 'session.joined'
   | 'session.state'
+  | 'session.state.request'
+  | 'session.error'
+  | 'participant.joined'
+  | 'participant.left'
+  | 'host.disconnected'
+  | 'session.command'
+  | 'session.state.set'
   | 'queue.add'
-  | 'queue.remove'
-  | 'round.configure'
-  | 'round.start'
-  | 'performance.start'
-  | 'performance.restart.request'
-  | 'performance.complete'
-  | 'host.transfer.request'
-  | 'host.transfer.accepted';
+  | 'queue.remove';
 
 export interface Envelope<TPayload = unknown> {
   id: string;
