@@ -34,6 +34,7 @@ class SearchResult(BaseModel):
     title: str
     artist: str | None = None
     album: str | None = None
+    channel_name: str | None = None
     duration_seconds: float | None = None
     thumbnail_url: str | None = None
     source_url: str
@@ -147,10 +148,16 @@ def search(
                 source_id=str(source_id),
                 source="yt-dlp",
                 title=str(entry.get("title") or "Sem título"),
-                artist=entry.get("channel") or entry.get("uploader"),
-                album=None,
+                artist=entry.get("artist") or entry.get("creator") or entry.get("uploader") or entry.get("channel"),
+                album=entry.get("album"),
+                channel_name=entry.get("channel") or entry.get("uploader"),
                 duration_seconds=entry.get("duration"),
-                thumbnail_url=entry.get("thumbnail"),
+                thumbnail_url=entry.get("thumbnail") or (
+                    f"https://i.ytimg.com/vi/{source_id}/hqdefault.jpg"
+                    if str(entry.get("ie_key") or "").lower().startswith("youtube")
+                    or str(source_url).startswith("https://www.youtube.com/")
+                    else None
+                ),
                 source_url=str(source_url),
             )
         )
