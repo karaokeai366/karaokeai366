@@ -13,6 +13,9 @@ from urllib.parse import quote_plus
 import httpx
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
+from .pipeline import PipelineError, prepare_asset
 from pydantic import BaseModel, Field
 
 APP_VERSION = "0.1.0"
@@ -27,6 +30,8 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+app.mount("/media", StaticFiles(directory=str(ROOT)), name="media")
 
 
 class SearchResult(BaseModel):
@@ -49,6 +54,19 @@ class DownloadRequest(BaseModel):
     source_url: str = Field(min_length=1)
     media_kind: str = Field(default="video", pattern="^(audio|video)$")
     asset_id: str | None = None
+
+
+class PrepareRequest(BaseModel):
+    source_url: str = Field(min_length=1)
+    media_kind: str = Field(default="video", pattern="^(audio|video)$")
+    asset_id: str | None = None
+    source_id: str | None = None
+    source: str | None = None
+    title: str = Field(min_length=1, max_length=160)
+    artist: str | None = Field(default=None, max_length=160)
+    album: str | None = Field(default=None, max_length=160)
+    channel_name: str | None = Field(default=None, max_length=200)
+    thumbnail_url: str | None = Field(default=None, max_length=2000)
 
 
 class DownloadResponse(BaseModel):
@@ -234,6 +252,38 @@ async def lyrics(
         plain_lyrics=data.get("plainLyrics"),
         synced_lyrics=data.get("syncedLyrics"),
     )
+
+
+@app.post("/prepare")
+async def prepare(request: PrepareRequest) -> dict[str, Any]:
+    source = {
+        "sourceId": request.source_id,
+        "source": request.source,
+        "title": request.title.strip(),
+        "artist": request.artist.strip() if request.artist else None,
+        "album": request.album.strip() if request.album else None,
+        "channelName": request.channel_name.strip() if request.channel_name else None,
+        "thumbnailUrl": request.thumbnail_url.strip() if request.thumbnail_url else None,
+        "sourceUrl": request.source_url.strip(),
+    }
+
+    asset_id = safe_asset_id(request.asset_id)
+
+    try:
+        manifest = await asyncio.to_thread(
+            prepare_asset,
+            asset_id=asset_id,
+            source=source,
+            media_kind=request.media_kind,
+            root=ROOT,
+        )
+    except PipelineError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Falha na preparação da música: {exc}") from exc
+
+    manifest["manifestUrl"] = f"/media/{asset_id}/manifest.json"
+    return manifest
 
 
 @app.post("/download", response_model=DownloadResponse)
