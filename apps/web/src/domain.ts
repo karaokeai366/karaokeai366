@@ -27,6 +27,9 @@ export interface QueueEntry {
   ownerParticipantId: string;
   title: string;
   artist?: string;
+  sourceId?: string;
+  source?: string;
+  sourceUrl?: string;
   requestedKey?: string;
   addedAt: number;
   status: 'queued' | 'preparing' | 'ready' | 'playing' | 'completed' | 'cancelled';
