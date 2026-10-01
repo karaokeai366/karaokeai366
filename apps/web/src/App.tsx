@@ -578,7 +578,8 @@ export function App() {
     if (!session || !transport || session.hostParticipantId !== currentParticipantId) return;
     transport.sendRaw('queue.status.set', session.sessionId, currentParticipantId, {
       queueEntryId,
-      status
+      status,
+      ...(status === 'playing' ? { playbackStartedAt: Date.now() } : {})
     });
   }
 
