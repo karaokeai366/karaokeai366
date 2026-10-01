@@ -166,6 +166,50 @@ wss.on('connection', (socket) => {
         break;
       }
 
+      case 'queue.status.set': {
+        const client = clientsBySocket.get(socket);
+        if (!client) {
+          reject(socket, 'Conecte-se a uma sessão primeiro.');
+          return;
+        }
+
+        const session = sessions.get(client.sessionId);
+        if (!session) {
+          reject(socket, 'Sessão não encontrada.');
+          return;
+        }
+
+        const currentState = session.state as any;
+        const queue = Array.isArray(currentState?.queue) ? currentState.queue : [];
+        const queueEntryId = String(message.payload?.queueEntryId ?? '');
+        const nextStatus = String(message.payload?.status ?? '');
+
+        const allowed = new Set(['queued', 'preparing', 'ready', 'playing', 'completed', 'cancelled']);
+        if (!allowed.has(nextStatus)) {
+          reject(socket, 'Status de fila inválido.');
+          return;
+        }
+
+        const entry = queue.find((item: any) => item.id === queueEntryId);
+        if (!entry) {
+          reject(socket, 'Música não encontrada na fila.');
+          return;
+        }
+
+        const isHost = client.participantId === session.hostParticipantId;
+        if (!isHost && entry.ownerParticipantId !== client.participantId) {
+          reject(socket, 'Somente o dono da música ou o Host pode alterar o status.');
+          return;
+        }
+
+        currentState.queue = queue.map((item: any) =>
+          item.id === queueEntryId ? { ...item, status: nextStatus } : item
+        );
+        session.state = currentState;
+        broadcast(session, 'session.state', { state: session.state });
+        break;
+      }
+
       case 'round.configure': {
         const client = clientsBySocket.get(socket);
         if (!client) {
