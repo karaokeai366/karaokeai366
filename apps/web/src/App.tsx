@@ -1523,12 +1523,12 @@ function RoundProgress({
 
       <div className="round-progress-stats">
         <strong>{completed}</strong>
-        <span>{required ? \` de \${required} músicas\` : ' músicas concluídas'}</span>
+        <span>{required ? ` de ${required} músicas` : ' músicas concluídas'}</span>
       </div>
 
       {required && (
         <div className="round-progress">
-          <span style={{ width: \`\${progress}%\` }} />
+          <span style={{ width: `${progress}%` }} />
         </div>
       )}
 
