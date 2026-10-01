@@ -403,7 +403,7 @@ export function App() {
               <div><span className="eyebrow">SUA FILA</span><h3>Escolha uma música</h3></div>
               <span className="tag">PARTICIPANTE</span>
             </div>
-            <p className="muted">Pesquise a música, escolha a versão desejada e coloque-a na fila com um toque.</p>
+            <p className="muted">Pesquise a música, confira capa, artista e origem e escolha a versão correta antes de colocar na fila.</p>
             <div className="search-box">
               <input
                 value={searchQuery}
@@ -418,15 +418,41 @@ export function App() {
             </div>
             {searchResults.length > 0 && (
               <div className="search-results">
+                <div className="search-results-heading">
+                  <span>{searchResults.length} resultado(s)</span>
+                  <small>Confira a versão antes de adicionar</small>
+                </div>
                 {searchResults.map((result) => (
-                  <div className="search-result" key={result.sourceId}>
-                    <div className="result-thumb">{result.thumbnailUrl ? <img src={result.thumbnailUrl} alt="" loading="lazy" /> : '🎵'}</div>
-                    <div className="result-info">
-                      <strong>{result.title}</strong>
-                      <small>{result.artist ?? 'Artista não identificado'}{result.durationSeconds ? ` · ${Math.round(result.durationSeconds / 60)} min` : ''}</small>
+                  <article className="search-result" key={result.sourceId}>
+                    <div className="result-thumb">
+                      {result.thumbnailUrl ? (
+                        <img src={result.thumbnailUrl} alt="" loading="lazy" />
+                      ) : (
+                        <span aria-hidden="true">🎵</span>
+                      )}
                     </div>
-                    <button className="secondary add-result" onClick={() => addSearchResultToQueue(result)}>+ Fila</button>
-                  </div>
+                    <div className="result-info">
+                      <strong title={result.title}>{result.title}</strong>
+                      <span className="result-artist">{result.artist ?? 'Artista não identificado'}</span>
+                      <div className="result-meta">
+                        {result.album && <span>Álbum: {result.album}</span>}
+                        {result.durationSeconds && <span>{Math.floor(result.durationSeconds / 60)}:{String(Math.floor(result.durationSeconds % 60)).padStart(2, '0')}</span>}
+                        {result.channelName && result.channelName !== result.artist && <span>Canal: {result.channelName}</span>}
+                      </div>
+                    </div>
+                    <div className="result-actions">
+                      <a
+                        className="result-source"
+                        href={result.sourceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Abrir a fonte da música"
+                      >
+                        Ver origem
+                      </a>
+                      <button className="secondary add-result" onClick={() => addSearchResultToQueue(result)}>+ Fila</button>
+                    </div>
+                  </article>
                 ))}
               </div>
             )}
