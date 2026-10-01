@@ -819,7 +819,7 @@ function TvStage({
                     && typeof (line as { start?: unknown }).start === 'number'
                     && typeof (line as { text?: unknown }).text === 'string'
                   )
-                  .sort((left, right) => left.start - right.start)
+                  .sort((left: { start: number; text: string }, right: { start: number; text: string }) => left.start - right.start)
               : [];
             setLyricsLines(lines);
           });
@@ -910,10 +910,11 @@ function TvStage({
 
     if (!voiceSourceRef.current) {
       voiceSourceRef.current.crossOrigin = 'anonymous';
+      const voiceGain = context.createGain();
       voiceSourceRef.current = context.createMediaElementSource(remoteAudioRef.current);
-      voiceGainRef.current = context.createGain();
-      voiceSourceRef.current.connect(voiceGainRef.current);
-      voiceGainRef.current.connect(context.destination);
+      voiceGainRef.current = voiceGain;
+      voiceSourceRef.current.connect(voiceGain);
+      voiceGain.connect(context.destination);
     }
 
     if (musicGainRef.current) musicGainRef.current.gain.value = musicVolume / 100;
