@@ -277,3 +277,11 @@ button { border: 0; border-radius: 14px; min-height: 48px; padding: 0 18px; colo
   .tone-actions { justify-content: flex-start; }
   .tone-manual { align-items: flex-start; flex-direction: column; }
 }
+
+.tone-applied { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 16px; border: 1px solid #33445f; border-radius: 16px; background: #0c1420; }
+.tone-applied .eyebrow { display: block; margin-bottom: 4px; color: #8db0ff; }
+.tone-applied strong { display: block; color: #d8e1f3; font-size: 14px; }
+.tone-applied small { display: block; margin-top: 4px; color: #7f8ba5; line-height: 1.4; }
+@media (max-width: 760px) {
+  .tone-applied { align-items: stretch; flex-direction: column; }
+}
