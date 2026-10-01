@@ -166,6 +166,85 @@ wss.on('connection', (socket) => {
         break;
       }
 
+      case 'queue.add': {
+        const client = clientsBySocket.get(socket);
+        if (!client) {
+          reject(socket, 'Conecte-se a uma sessão primeiro.');
+          return;
+        }
+
+        const session = sessions.get(client.sessionId);
+        if (!session) {
+          reject(socket, 'Sessão não encontrada.');
+          return;
+        }
+
+        const title = String(message.payload?.title ?? '').trim().slice(0, 160);
+        if (!title) {
+          reject(socket, 'O título da música é obrigatório.');
+          return;
+        }
+
+        const currentState = session.state as any;
+        if (!currentState || !Array.isArray(currentState.participants)) {
+          reject(socket, 'Estado da sessão indisponível.');
+          return;
+        }
+
+        const queue = Array.isArray(currentState.queue) ? currentState.queue : [];
+        const entry = {
+          id: randomUUID(),
+          ownerParticipantId: client.participantId,
+          title,
+          artist: String(message.payload?.artist ?? '').trim().slice(0, 120) || undefined,
+          requestedKey: String(message.payload?.requestedKey ?? '').trim().slice(0, 8) || undefined,
+          addedAt: Date.now(),
+          status: 'queued'
+        };
+
+        currentState.queue = [...queue, entry];
+        currentState.queueSize = currentState.queue.length;
+        session.state = currentState;
+        broadcast(session, 'session.state', { state: session.state });
+        break;
+      }
+
+      case 'queue.remove': {
+        const client = clientsBySocket.get(socket);
+        if (!client) {
+          reject(socket, 'Conecte-se a uma sessão primeiro.');
+          return;
+        }
+
+        const session = sessions.get(client.sessionId);
+        if (!session) {
+          reject(socket, 'Sessão não encontrada.');
+          return;
+        }
+
+        const currentState = session.state as any;
+        const queue = Array.isArray(currentState?.queue) ? currentState.queue : [];
+        const queueEntryId = String(message.payload?.queueEntryId ?? '');
+        const entry = queue.find((item: any) => item.id === queueEntryId);
+
+        if (!entry) {
+          reject(socket, 'Música não encontrada na fila.');
+          return;
+        }
+
+        const isHost = client.participantId === session.hostParticipantId;
+        if (!isHost && entry.ownerParticipantId !== client.participantId) {
+          reject(socket, 'Você só pode remover suas próprias músicas.');
+          return;
+        }
+
+        currentState.queue = queue.filter((item: any) => item.id !== queueEntryId);
+        currentState.queueSize = currentState.queue.length;
+        session.state = currentState;
+        broadcast(session, 'session.state', { state: session.state });
+        break;
+      }
+
       case 'session.state.set': {
         const client = clientsBySocket.get(socket);
         if (!client) {
