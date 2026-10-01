@@ -165,7 +165,7 @@ def transpose_asset_key(
         target_key,
     )
     melody_path.write_text(
-        json.dumps(melody_transposed, ensure_ascii=False, indent=2) + "\\n",
+        json.dumps(melody_transposed, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
 
@@ -178,7 +178,7 @@ def transpose_asset_key(
     manifest.setdefault("preparation", {})["key"] = "ready"
 
     manifest_path.write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2) + "\\n",
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
 
