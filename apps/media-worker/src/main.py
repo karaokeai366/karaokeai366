@@ -15,7 +15,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from .pipeline import PipelineError, prepare_asset
+from .pipeline import PipelineError, SOURCE_SEPARATION_ENABLED, prepare_asset
 from pydantic import BaseModel, Field
 
 APP_VERSION = "0.1.0"
@@ -129,6 +129,8 @@ def health() -> dict[str, Any]:
         "yt_dlp": shutil.which("yt-dlp") is not None,
         "ffmpeg": shutil.which("ffmpeg") is not None,
         "ffprobe": shutil.which("ffprobe") is not None,
+        "audio_separator": shutil.which("audio-separator") is not None,
+        "source_separation_enabled": SOURCE_SEPARATION_ENABLED,
     }
 
 
