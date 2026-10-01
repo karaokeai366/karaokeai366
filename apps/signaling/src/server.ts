@@ -241,6 +241,9 @@ wss.on('connection', (socket) => {
           ownerParticipantId: client.participantId,
           title,
           artist: String(message.payload?.artist ?? '').trim().slice(0, 120) || undefined,
+          sourceId: String(message.payload?.sourceId ?? '').trim().slice(0, 200) || undefined,
+          source: String(message.payload?.source ?? '').trim().slice(0, 80) || undefined,
+          sourceUrl: String(message.payload?.sourceUrl ?? '').trim().slice(0, 1000) || undefined,
           requestedKey: String(message.payload?.requestedKey ?? '').trim().slice(0, 8) || undefined,
           addedAt: Date.now(),
           status: 'queued'
