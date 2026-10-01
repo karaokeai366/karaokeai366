@@ -581,8 +581,8 @@ function SingerMicrophone({
 
       const continuingForSameSinger =
         Boolean(playing)
-        && playing.id !== previousId
-        && playing.ownerParticipantId === participantId;
+        && playing?.id !== previousId
+        && playing?.ownerParticipantId === participantId;
 
       if (!continuingForSameSinger) {
         stop();
