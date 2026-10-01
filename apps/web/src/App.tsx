@@ -697,10 +697,16 @@ function TvStage({
 
   function enableAudio() {
     const audio = audioRef.current;
+    const remoteAudio = remoteAudioRef.current;
     if (!audio) return;
 
     audio.currentTime = elapsed;
-    audio.play()
+    const playback = [
+      audio.play(),
+      ...(remoteAudio?.srcObject ? [remoteAudio.play()] : [])
+    ];
+
+    Promise.all(playback)
       .then(() => {
         setAudioEnabled(true);
         setAudioError('');
@@ -1079,6 +1085,7 @@ export function App() {
   }
 
   function startNextSong() {
+    if (session?.queue.some((entry) => entry.status === 'playing')) return;
     const next = session?.queue.find((entry) => entry.status === 'ready');
     if (next) setQueueStatus(next.id, 'playing');
   }
