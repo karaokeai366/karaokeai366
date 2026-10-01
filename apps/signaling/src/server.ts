@@ -1223,6 +1223,63 @@ wss.on('connection', (socket) => {
         break;
       }
 
+      case 'host.claim': {
+        const client = clientsBySocket.get(socket);
+        if (!client) {
+          reject(socket, 'Conecte-se a uma sessão primeiro.');
+          return;
+        }
+
+        const session = sessions.get(client.sessionId);
+        if (!session) {
+          reject(socket, 'Sessão não encontrada.');
+          return;
+        }
+
+        if (client.participantId === session.hostParticipantId) {
+          return;
+        }
+
+        const currentState = session.state as any;
+        const currentHost = currentState?.participants?.find(
+          (participant: any) => participant.id === session.hostParticipantId
+        );
+
+        if (currentHost?.online !== false) {
+          reject(socket, 'O Host atual ainda está conectado.');
+          return;
+        }
+
+        const candidate = currentState?.participants?.find(
+          (participant: any) => participant.id === client.participantId
+        );
+
+        if (!candidate || candidate.role === 'tv' || candidate.online === false) {
+          reject(socket, 'Este participante não pode assumir o Host.');
+          return;
+        }
+
+        const previousHostId = session.hostParticipantId;
+        session.hostParticipantId = client.participantId;
+        currentState.hostParticipantId = client.participantId;
+
+        const previousHostClient = session.clients.get(previousHostId);
+        if (previousHostClient) previousHostClient.role = 'participant';
+        client.role = 'host';
+
+        currentState.participants = currentState.participants.map((participant: any) =>
+          participant.id === previousHostId
+            ? { ...participant, role: 'participant' }
+            : participant.id === client.participantId
+              ? { ...participant, role: 'host' }
+              : participant
+        );
+
+        session.state = currentState;
+        broadcast(session, 'session.state', { state: session.state });
+        break;
+      }
+
       case 'host.transfer': {
         const client = clientsBySocket.get(socket);
         if (!client) {
