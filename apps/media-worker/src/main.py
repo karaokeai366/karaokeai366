@@ -163,9 +163,15 @@ def search(
         results.append(
             SearchResult(
                 source_id=str(source_id),
-                source="yt-dlp",
+                source="youtube-music" if str(source_url).startswith("https://music.youtube.com/") else "youtube",
                 title=str(entry.get("title") or "Sem título"),
-                artist=entry.get("artist") or entry.get("creator") or entry.get("uploader") or entry.get("channel"),
+                artist=(
+                    ", ".join(str(item) for item in entry.get("artists", []) if item)
+                    or entry.get("artist")
+                    or entry.get("creator")
+                    or entry.get("uploader")
+                    or entry.get("channel")
+                ),
                 album=entry.get("album"),
                 channel_name=entry.get("channel") or entry.get("uploader"),
                 duration_seconds=entry.get("duration"),
