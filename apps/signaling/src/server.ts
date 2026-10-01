@@ -166,6 +166,50 @@ wss.on('connection', (socket) => {
         break;
       }
 
+      case 'round.configure': {
+        const client = clientsBySocket.get(socket);
+        if (!client) {
+          reject(socket, 'Conecte-se a uma sessão primeiro.');
+          return;
+        }
+
+        const session = sessions.get(client.sessionId);
+        if (!session) {
+          reject(socket, 'Sessão não encontrada.');
+          return;
+        }
+
+        if (client.participantId !== session.hostParticipantId) {
+          reject(socket, 'Somente o Host pode configurar a rodada.');
+          return;
+        }
+
+        const mode = message.payload?.mode;
+        if (!mode || (mode.kind !== 'open' && mode.kind !== 'songs')) {
+          reject(socket, 'Modo de rodada inválido.');
+          return;
+        }
+
+        if (mode.kind === 'songs' && (!Number.isFinite(mode.songCount) || mode.songCount < 1 || mode.songCount > 100)) {
+          reject(socket, 'A rodada deve ter entre 1 e 100 músicas.');
+          return;
+        }
+
+        const currentState = session.state as any;
+        if (!currentState) {
+          reject(socket, 'Estado da sessão indisponível.');
+          return;
+        }
+
+        currentState.roundMode = mode.kind === 'open'
+          ? { kind: 'open' }
+          : { kind: 'songs', songCount: Math.floor(mode.songCount) };
+
+        session.state = currentState;
+        broadcast(session, 'session.state', { state: session.state });
+        break;
+      }
+
       case 'queue.add': {
         const client = clientsBySocket.get(socket);
         if (!client) {
