@@ -742,11 +742,14 @@ function TvStage({
   function setupMixer(): AudioContext | null {
     if (!audioRef.current || !remoteAudioRef.current) return null;
 
-    const context = audioContextRef.current ?? new AudioContext();
+    const AudioContextCtor = window.AudioContext
+      ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextCtor) return null;
+
+    const context = audioContextRef.current ?? new AudioContextCtor();
     audioContextRef.current = context;
 
     if (!musicSourceRef.current) {
-      audioRef.current.crossOrigin = 'anonymous';
       musicSourceRef.current = context.createMediaElementSource(audioRef.current);
       musicGainRef.current = context.createGain();
       musicSourceRef.current.connect(musicGainRef.current);
@@ -796,6 +799,13 @@ function TvStage({
   }
 
   useEffect(() => {
+    return () => {
+      peerRef.current?.close();
+      audioContextRef.current?.close().catch(() => undefined);
+    };
+  }, []);
+
+  useEffect(() => {
     if (musicGainRef.current) musicGainRef.current.gain.value = musicVolume / 100;
   }, [musicVolume]);
 
@@ -805,7 +815,7 @@ function TvStage({
 
   return (
     <main className="tv-stage">
-      <audio ref={audioRef} preload="auto" />
+      <audio ref={audioRef} preload="auto" crossOrigin="anonymous" />
       <audio ref={remoteAudioRef} autoPlay playsInline />
       <header className="tv-topbar">
         <div className="tv-brand"><span className="brand-mark">🎤</span><strong>KaraokeAI</strong></div>
