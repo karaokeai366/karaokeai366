@@ -14,6 +14,7 @@ export type MessageType =
   | 'queue.add'
   | 'queue.remove'
   | 'queue.status.set'
+  | 'queue.next'
   | 'queue.restart'
   | 'playback.finished'
   | 'playback.control'
