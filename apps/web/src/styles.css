@@ -127,3 +127,12 @@ button { border: 0; border-radius: 14px; min-height: 48px; padding: 0 18px; colo
   .queue-row { grid-template-columns: 24px 32px minmax(0, 1fr) auto; }
   .queue-key { display: none; }
 }
+
+.round-options { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 16px; }
+.round-choice { min-height: 56px; background: #10162a; border: 1px solid #29304c; color: #aeb5cc; font-size: 12px; text-align: left; }
+.round-choice.selected { border-color: #6e78ff; background: #191f3b; color: #e5e8ff; box-shadow: inset 0 0 0 1px rgba(110,120,255,.25); }
+.round-count { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.round-count input { width: 120px; }
+.round-count span { color: #7f88a4; font-size: 13px; }
+.small-note { margin-bottom: 0; font-size: 12px; }
+@media (max-width: 620px) { .round-options { grid-template-columns: 1fr; } }
