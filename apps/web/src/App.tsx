@@ -105,23 +105,49 @@ function SearchResults({
   results: SongSearchResult[];
   onAdd: (result: SongSearchResult) => void;
 }) {
+  const [activeFilter, setActiveFilter] = useState('Todas');
+
+  useEffect(() => {
+    setActiveFilter('Todas');
+  }, [results]);
+
   if (results.length === 0) return null;
 
+  const filters = ['Todas', 'Karaokê', 'Instrumental', 'Ao vivo', 'Cover'];
   const groups = groupSearchResults(results);
+  const filteredGroups = groups
+    .map((group) => activeFilter === 'Todas'
+      ? group
+      : group.filter((result) => versionLabels(result).includes(activeFilter)))
+    .filter((group) => group.length > 0);
+  const visibleCount = filteredGroups.reduce((total, group) => total + group.length, 0);
 
   return (
     <div className="search-results">
       <div className="search-results-heading">
-        <span>{results.length} resultado(s)</span>
+        <span>{visibleCount} resultado(s)</span>
         <small>Escolha a versão correta antes de colocar na fila</small>
       </div>
 
-      {groups.map((group, groupIndex) => {
-        const groupKey = songGroupKey(group[0]) ?? \`single-\${groupIndex}\`;
+      <div className="search-filters" aria-label="Filtrar versões">
+        {filters.map((filter) => (
+          <button
+            key={filter}
+            type="button"
+            className={`search-filter ${activeFilter === filter ? 'selected' : ''}`}
+            onClick={() => setActiveFilter(filter)}
+          >
+            {filter}
+          </button>
+        ))}
+      </div>
+
+      {filteredGroups.map((group, groupIndex) => {
+        const groupKey = songGroupKey(group[0]) ?? `single-${groupIndex}`;
         const hasVersions = group.length > 1;
 
         return (
-          <section className={\`search-group \${hasVersions ? 'has-versions' : ''}\`} key={groupKey}>
+          <section className={`search-group ${hasVersions ? 'has-versions' : ''}`} key={groupKey}>
             {hasVersions && (
               <div className="search-group-heading">
                 <div>
