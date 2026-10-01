@@ -45,12 +45,14 @@ export function createSession(name: string): SessionState {
     createdAt: now,
     hostParticipantId: participantId,
     participants: [participant],
+    queue: [],
     queueSize: 0,
     roundMode: { kind: 'songs', songCount: 1 },
     status: 'lobby'
   };
 
   localStorage.setItem(SESSION_KEY, JSON.stringify(state));
+  localStorage.setItem(DEVICE_KEY, participantId);
   return state;
 }
 
@@ -67,8 +69,9 @@ export function getLocalSession(): SessionState | null {
 
 export function buildJoinUrl(session: SessionState): string {
   const params = new URLSearchParams({
+    join: '1',
     session: session.sessionId,
     host: session.hostParticipantId
   });
-  return window.location.origin + '/?join=1&' + params.toString();
+  return window.location.origin + '/?' + params.toString();
 }
