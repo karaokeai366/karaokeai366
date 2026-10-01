@@ -234,6 +234,44 @@ wss.on('connection', (socket) => {
         break;
       }
 
+      case 'performance.complete': {
+        const client = clientsBySocket.get(socket);
+        if (!client) { reject(socket, 'Conecte-se a uma sessão primeiro.'); return; }
+        const session = sessions.get(client.sessionId);
+        if (!session) { reject(socket, 'Sessão não encontrada.'); return; }
+        const currentState = session.state as any;
+        const queue = Array.isArray(currentState?.queue) ? currentState.queue : [];
+        const queueEntryId = String(message.payload?.queueEntryId ?? '');
+        const performanceId = String(message.payload?.performanceId ?? '').trim().slice(0, 160);
+        const entry = queue.find((item: any) => item.id === queueEntryId);
+        if (!entry) { reject(socket, 'Música não encontrada na fila.'); return; }
+        if (entry.ownerParticipantId !== client.participantId) { reject(socket, 'Somente o cantor pode enviar a pontuação da própria apresentação.'); return; }
+        if (entry.status !== 'completed') { reject(socket, 'A pontuação oficial só pode ser enviada depois de finalizar a música.'); return; }
+        const rawScore = message.payload?.score ?? {};
+        const clampScore = (value: unknown): number | null => {
+          if (!Number.isFinite(value)) return null;
+          return Math.max(0, Math.min(100, Math.round(Number(value))));
+        };
+        const overall = clampScore(rawScore.overall);
+        const pitch = clampScore(rawScore.pitch);
+        const precision = clampScore(rawScore.precision);
+        const rhythm = clampScore(rawScore.rhythm);
+        const stability = clampScore(rawScore.stability);
+        const matchedSamples = Number.isFinite(rawScore.matchedSamples)
+          ? Math.max(0, Math.floor(Number(rawScore.matchedSamples)))
+          : null;
+        if (!performanceId || overall === null || pitch === null || precision === null || rhythm === null || stability === null || matchedSamples === null) {
+          reject(socket, 'Pontuação de apresentação inválida.');
+          return;
+        }
+        currentState.queue = queue.map((item: any) => item.id === queueEntryId
+          ? { ...item, score: { overall, pitch, precision, rhythm, stability, matchedSamples, performanceId, sealedAt: Date.now() } }
+          : item
+        );
+        session.state = currentState;
+        broadcast(session, 'session.state', { state: session.state });
+        break;
+      }
       case 'round.configure': {
         const client = clientsBySocket.get(socket);
         if (!client) {
