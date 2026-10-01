@@ -3,5 +3,5 @@ uvicorn[standard]==0.54.0
 yt-dlp==2026.8.19
 httpx==0.28.1
 pydantic==2.12.5
-audio-separator==0.47.0
+audio-separator[cpu]==0.47.0
 librosa==1.0.0
