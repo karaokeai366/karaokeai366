@@ -517,8 +517,15 @@ function TvStage({
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [audioError, setAudioError] = useState('');
   const [microphoneConnected, setMicrophoneConnected] = useState(false);
+  const [musicVolume, setMusicVolume] = useState(90);
+  const [voiceVolume, setVoiceVolume] = useState(110);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const musicGainRef = useRef<GainNode | null>(null);
+  const voiceGainRef = useRef<GainNode | null>(null);
+  const musicSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const voiceSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
   const handledSignalsRef = useRef(new Set<string>());
 
@@ -732,26 +739,69 @@ function TvStage({
   const currentLine = currentLineIndex >= 0 ? lyricsLines[currentLineIndex] : null;
   const nextLine = currentLineIndex >= 0 ? lyricsLines[currentLineIndex + 1] : lyricsLines[0];
 
+  function setupMixer(): AudioContext | null {
+    if (!audioRef.current || !remoteAudioRef.current) return null;
+
+    const context = audioContextRef.current ?? new AudioContext();
+    audioContextRef.current = context;
+
+    if (!musicSourceRef.current) {
+      audioRef.current.crossOrigin = 'anonymous';
+      musicSourceRef.current = context.createMediaElementSource(audioRef.current);
+      musicGainRef.current = context.createGain();
+      musicSourceRef.current.connect(musicGainRef.current);
+      musicGainRef.current.connect(context.destination);
+    }
+
+    if (!voiceSourceRef.current) {
+      voiceSourceRef.current.crossOrigin = 'anonymous';
+      voiceSourceRef.current = context.createMediaElementSource(remoteAudioRef.current);
+      voiceGainRef.current = context.createGain();
+      voiceSourceRef.current.connect(voiceGainRef.current);
+      voiceGainRef.current.connect(context.destination);
+    }
+
+    if (musicGainRef.current) musicGainRef.current.gain.value = musicVolume / 100;
+    if (voiceGainRef.current) voiceGainRef.current.gain.value = voiceVolume / 100;
+
+    return context;
+  }
+
   function enableAudio() {
     const audio = audioRef.current;
     const remoteAudio = remoteAudioRef.current;
     if (!audio) return;
 
-    audio.currentTime = elapsed;
-    const playback = [
-      audio.play(),
-      ...(remoteAudio?.srcObject ? [remoteAudio.play()] : [])
-    ];
+    try {
+      const context = setupMixer();
+      if (context?.state === 'suspended') void context.resume();
 
-    Promise.all(playback)
-      .then(() => {
-        setAudioEnabled(true);
-        setAudioError('');
-      })
-      .catch(() => {
-        setAudioError('Não foi possível iniciar o áudio nesta tela.');
-      });
+      audio.currentTime = elapsed;
+      const playback = [
+        audio.play(),
+        ...(remoteAudio?.srcObject ? [remoteAudio.play()] : [])
+      ];
+
+      Promise.all(playback)
+        .then(() => {
+          setAudioEnabled(true);
+          setAudioError('');
+        })
+        .catch(() => {
+          setAudioError('Não foi possível iniciar o áudio nesta tela.');
+        });
+    } catch (error) {
+      setAudioError(error instanceof Error ? error.message : 'Não foi possível iniciar o mixer de áudio.');
+    }
   }
+
+  useEffect(() => {
+    if (musicGainRef.current) musicGainRef.current.gain.value = musicVolume / 100;
+  }, [musicVolume]);
+
+  useEffect(() => {
+    if (voiceGainRef.current) voiceGainRef.current.gain.value = voiceVolume / 100;
+  }, [voiceVolume]);
 
   return (
     <main className="tv-stage">
@@ -796,6 +846,21 @@ function TvStage({
                     <button className="tv-audio-button" onClick={enableAudio}>🔊 Ativar áudio</button>
                   )}
                 </div>
+
+                {audioEnabled && (
+                  <div className="tv-mixer">
+                    <label>
+                      <span>🎵 Instrumental</span>
+                      <input type="range" min="0" max="120" value={musicVolume} onChange={(event) => setMusicVolume(Number(event.target.value))} />
+                      <strong>{musicVolume}%</strong>
+                    </label>
+                    <label>
+                      <span>🎙️ Voz</span>
+                      <input type="range" min="0" max="160" value={voiceVolume} onChange={(event) => setVoiceVolume(Number(event.target.value))} />
+                      <strong>{voiceVolume}%</strong>
+                    </label>
+                  </div>
+                )}
 
                 {audioError && <div className="tv-audio-error">{audioError}</div>}
               </div>
