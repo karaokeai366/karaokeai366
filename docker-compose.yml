@@ -1,0 +1,9 @@
+services:
+  signaling:
+    build:
+      context: ./apps/signaling
+    environment:
+      PORT: 8787
+    ports:
+      - "8787:8787"
+    restart: unless-stopped
