@@ -45,6 +45,8 @@ export interface QueueStatusSetRequest {
   status: 'queued' | 'preparing' | 'ready' | 'playing' | 'completed' | 'cancelled';
   assetId?: string;
   manifestUrl?: string;
+  originalKey?: string;
+  selectedKey?: string;
   preparationStage?: string;
   preparationProgress?: number;
   preparationMessage?: string;
