@@ -6,6 +6,7 @@ export interface SongSearchResult {
   title: string;
   artist?: string;
   album?: string;
+  channelName?: string;
   durationSeconds?: number;
   thumbnailUrl?: string;
   sourceUrl: string;
