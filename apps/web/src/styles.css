@@ -108,3 +108,22 @@ button { border: 0; border-radius: 14px; min-height: 48px; padding: 0 18px; colo
 .one-column { grid-template-columns: 1fr; }
 .participant-hero { min-height: 220px; display: flex; flex-direction: column; justify-content: center; }
 .connection-line { display: flex; align-items: center; gap: 10px; margin-top: 10px; color: #8992ad; font-size: 13px; }
+
+.song-form { display: grid; grid-template-columns: 1.4fr 1fr auto; gap: 9px; margin-top: 16px; }
+.queue-list { display: grid; gap: 4px; margin-top: 18px; }
+.queue-row { display: grid; grid-template-columns: 28px 34px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 10px 6px; border-top: 1px solid #20263e; }
+.queue-row:first-child { border-top: 0; }
+.queue-position { color: #6f7896; font-size: 12px; text-align: center; font-weight: 800; }
+.queue-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 11px; background: #181e34; }
+.queue-info { min-width: 0; }
+.queue-info strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queue-info small { display: block; margin-top: 3px; color: #7f88a4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queue-key { padding: 5px 8px; border: 1px solid #30385a; border-radius: 999px; color: #aab4de; font-size: 10px; white-space: nowrap; }
+.queue-remove { width: 30px; min-height: 30px; padding: 0; border-radius: 10px; background: #171c2c; border: 1px solid #2d3451; color: #aeb5cc; font-size: 19px; line-height: 1; }
+.queue-remove:hover { background: #242b43; }
+.empty-queue { margin-top: 14px; padding: 15px; border: 1px dashed #2b3350; border-radius: 14px; color: #7f88a4; line-height: 1.5; }
+@media (max-width: 760px) {
+  .song-form { grid-template-columns: 1fr; }
+  .queue-row { grid-template-columns: 24px 32px minmax(0, 1fr) auto; }
+  .queue-key { display: none; }
+}
