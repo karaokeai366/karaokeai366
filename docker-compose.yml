@@ -13,10 +13,13 @@ services:
       context: ./apps/media-worker
     environment:
       KARAOKE_MEDIA_ROOT: /app/data/media
+      AUDIO_SEPARATOR_MODEL_DIR: /app/data/models
+      KARAOKE_ENABLE_SOURCE_SEPARATION: "true"
     ports:
       - "8790:8790"
     volumes:
       - karaokeai-media:/app/data/media
+      - karaokeai-models:/app/data/models
     restart: unless-stopped
 
 volumes:
