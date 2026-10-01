@@ -2140,6 +2140,19 @@ export function App() {
 
 
   useEffect(() => {
+    if (!session || !currentParticipantId) return;
+
+    const me = session.participants.find((participant) => participant.id === currentParticipantId);
+    if (!me) return;
+
+    if (me.role === 'host' && view !== 'host') {
+      setView('host');
+    } else if (me.role === 'participant' && view === 'host') {
+      setView('participant');
+    }
+  }, [session?.hostParticipantId, session?.participants, currentParticipantId, view]);
+
+  useEffect(() => {
     if (!transport) return;
     return transport.subscribe((message) => {
       if (!message.id) return;
