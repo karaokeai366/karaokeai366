@@ -16,6 +16,7 @@ export type MessageType =
   | 'queue.status.set'
   | 'queue.restart'
   | 'playback.finished'
+  | 'playback.control'
   | 'performance.complete'
   | 'round.configure';
 
@@ -57,6 +58,11 @@ export interface QueueStatusSetRequest {
   durationSeconds?: number;
   performanceId?: string;
   attemptCancelReason?: 'restart' | 'key-test' | 'abandoned';
+}
+
+export interface PlaybackControlRequest {
+  queueEntryId?: string;
+  action: 'pause' | 'resume' | 'skip' | 'end';
 }
 
 export interface RoundConfigureRequest {
