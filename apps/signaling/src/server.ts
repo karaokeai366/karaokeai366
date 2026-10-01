@@ -14,6 +14,7 @@ type Session = {
   state: unknown;
   clients: Map<string, Client>;
   cleanupTimer?: ReturnType<typeof setTimeout>;
+  autoAdvanceTimer?: ReturnType<typeof setTimeout>;
 };
 
 const SESSION_RETENTION_MS = 10 * 60 * 1000;
@@ -214,6 +215,48 @@ function shouldFinishFixedRound(state: any, queue: any[]): boolean {
       && result.finished
     );
   });
+}
+
+function scheduleAutoAdvance(session: Session, queueEntryId: string): void {
+  if (session.autoAdvanceTimer) {
+    clearTimeout(session.autoAdvanceTimer);
+    session.autoAdvanceTimer = undefined;
+  }
+
+  session.autoAdvanceTimer = setTimeout(() => {
+    session.autoAdvanceTimer = undefined;
+
+    const state = session.state as any;
+    if (!state || state.autoAdvance === false || state.status === 'finished') return;
+
+    const queue = Array.isArray(state.queue) ? state.queue : [];
+    if (queue.some((item: any) => item.status === 'playing')) return;
+
+    const completed = queue.find((item: any) => item.id === queueEntryId);
+    if (
+      !completed
+      || completed.status !== 'completed'
+      || !completed.score
+      || completed.roundId !== state.roundId
+    ) {
+      return;
+    }
+
+    if (shouldFinishFixedRound(state, queue)) {
+      state.status = 'finished';
+      session.state = state;
+      broadcast(session, 'session.state', { state: session.state });
+      return;
+    }
+
+    const nextQueue = startNextQueueEntry(state, queue);
+    if (!nextQueue) return;
+
+    state.queue = nextQueue;
+    state.status = 'playing';
+    session.state = state;
+    broadcast(session, 'session.state', { state: session.state });
+  }, 3500);
 }
 
 function startNextQueueEntry(state: any, queue: any[]): any[] | null {
@@ -813,6 +856,10 @@ wss.on('connection', (socket) => {
             return item;
           });
           currentState.status = 'finished';
+          if (session.autoAdvanceTimer) {
+            clearTimeout(session.autoAdvanceTimer);
+            session.autoAdvanceTimer = undefined;
+          }
           session.state = currentState;
           broadcast(session, 'session.state', { state: session.state });
           break;
@@ -1060,12 +1107,17 @@ wss.on('connection', (socket) => {
           songScores: officialScores
         };
 
-        if (shouldFinishFixedRound(currentState, currentState.queue)) {
+        const roundFinished = shouldFinishFixedRound(currentState, currentState.queue);
+        if (roundFinished) {
           currentState.status = 'finished';
         }
 
         session.state = currentState;
         broadcast(session, 'session.state', { state: session.state });
+
+        if (!roundFinished && currentState.autoAdvance !== false) {
+          scheduleAutoAdvance(session, queueEntryId);
+        }
         break;
       }
       case 'round.configure': {
@@ -1108,6 +1160,11 @@ wss.on('connection', (socket) => {
         if (!currentState) {
           reject(socket, 'Estado da sessão indisponível.');
           return;
+        }
+
+        if (session.autoAdvanceTimer) {
+          clearTimeout(session.autoAdvanceTimer);
+          session.autoAdvanceTimer = undefined;
         }
 
         currentState.roundMode = mode.kind === 'open'
