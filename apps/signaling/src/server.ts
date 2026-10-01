@@ -191,6 +191,29 @@ function findAutoAdvanceEntry(state: any, queue: any[]): any | null {
   return differentSinger ?? fairest[0] ?? candidates[0];
 }
 
+function shouldFinishFixedRound(state: any, queue: any[]): boolean {
+  if (state?.roundMode?.kind !== 'songs') return false;
+
+  const currentRoundId = state.roundId;
+  const owners = Array.from(new Set(
+    queue
+      .filter((item: any) => item.roundId === currentRoundId)
+      .map((item: any) => item.ownerParticipantId)
+  ));
+
+  if (owners.length === 0) return false;
+  if (queue.some((item: any) => item.status === 'playing')) return false;
+
+  return owners.every((participantId) => {
+    const result = state.roundResultsByParticipant?.[participantId];
+    return Boolean(
+      result
+      && result.roundId === currentRoundId
+      && result.finished
+    );
+  });
+}
+
 function startNextQueueEntry(state: any, queue: any[]): any[] | null {
   if (queue.some((item: any) => item.status === 'playing')) return null;
 
@@ -956,6 +979,10 @@ wss.on('connection', (socket) => {
           updatedAt: Date.now(),
           songScores: officialScores
         };
+
+        if (shouldFinishFixedRound(currentState, currentState.queue)) {
+          currentState.status = 'finished';
+        }
 
         session.state = currentState;
         broadcast(session, 'session.state', { state: session.state });
