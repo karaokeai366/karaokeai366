@@ -14,6 +14,7 @@ export type MessageType =
   | 'queue.add'
   | 'queue.remove'
   | 'queue.status.set'
+  | 'queue.restart'
   | 'performance.complete'
   | 'round.configure';
 
@@ -51,6 +52,7 @@ export interface QueueStatusSetRequest {
   preparationProgress?: number;
   preparationMessage?: string;
   playbackStartedAt?: number;
+  durationSeconds?: number;
 }
 
 export interface RoundConfigureRequest {
@@ -58,6 +60,7 @@ export interface RoundConfigureRequest {
 }
 
 export interface RestartRequest {
+  queueEntryId: string;
   performanceId: string;
   progressPercent: number;
 }
