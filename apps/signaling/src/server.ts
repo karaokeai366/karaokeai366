@@ -117,11 +117,12 @@ wss.on('connection', (socket) => {
           return;
         }
 
+        const requestedRole = message.payload?.role === 'tv' ? 'tv' : 'participant';
         const client: Client = {
           socket,
           sessionId: session.sessionId,
           participantId: message.senderId,
-          role: 'participant'
+          role: requestedRole
         };
 
         session.clients.set(client.participantId, client);
@@ -134,7 +135,7 @@ wss.on('connection', (socket) => {
             {
               id: client.participantId,
               name: String(message.payload?.name ?? 'Participante').slice(0, 30),
-              role: 'participant',
+              role: client.role,
               joinedAt: Date.now(),
               capabilities: message.payload?.capabilities ?? {
                 logicalCores: undefined,
