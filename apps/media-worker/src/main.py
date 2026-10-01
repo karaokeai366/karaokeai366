@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import time
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -46,7 +47,7 @@ def update_prepare_job(job_id: str, stage: str, percent: int, message: str) -> N
         "stage": stage,
         "progress": percent,
         "message": message,
-        "updatedAt": asyncio.get_event_loop().time(),
+        "updatedAt": time.monotonic(),
     })
 
 
