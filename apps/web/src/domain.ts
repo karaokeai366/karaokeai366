@@ -34,6 +34,9 @@ export interface QueueEntry {
   requestedKey?: string;
   assetId?: string;
   manifestUrl?: string;
+  preparationStage?: string;
+  preparationProgress?: number;
+  preparationMessage?: string;
   addedAt: number;
   status: 'queued' | 'preparing' | 'ready' | 'playing' | 'completed' | 'cancelled';
 }
