@@ -3,6 +3,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import type { QueueEntry, SessionState } from './domain';
 import {
   buildJoinUrl,
+  buildTvJoinUrl,
   createSession,
   detectCapabilities,
   getDeviceId,
@@ -12,7 +13,7 @@ import { WebSocketTransport } from './wsTransport';
 import { getSongPreparationStatus, searchSongs, startSongPreparation } from './mediaClient';
 import type { SongSearchResult } from '../../../packages/media/src/song';
 
-type View = 'home' | 'host' | 'join' | 'participant';
+type View = 'home' | 'host' | 'join' | 'participant' | 'tv';
 
 const SIGNALING_PORT = 8787;
 
@@ -570,6 +571,24 @@ export function App() {
     }
   }
 
+  function setQueueStatus(queueEntryId: string, status: 'playing' | 'completed') {
+    if (!session || !transport || session.hostParticipantId !== currentParticipantId) return;
+    transport.sendRaw('queue.status.set', session.sessionId, currentParticipantId, {
+      queueEntryId,
+      status
+    });
+  }
+
+  function startNextSong() {
+    const next = session?.queue.find((entry) => entry.status === 'ready');
+    if (next) setQueueStatus(next.id, 'playing');
+  }
+
+  function finishCurrentSong() {
+    const current = session?.queue.find((entry) => entry.status === 'playing');
+    if (current) setQueueStatus(current.id, 'completed');
+  }
+
   function configureRound() {
     if (!session || !transport || !currentParticipantId) return;
 
@@ -589,6 +608,55 @@ export function App() {
     (participant) => participant.id === currentParticipantId
   );
   const joinUrl = session ? buildJoinUrl(session) : '';
+  const tvJoinUrl = session ? buildTvJoinUrl(session) : '';
+
+  if (view === 'tv' && session) {
+    const playing = session.queue.find((entry) => entry.status === 'playing') ?? null;
+    const upcoming = session.queue.filter((entry) => entry.status === 'ready' || entry.status === 'playing' || entry.status === 'preparing');
+
+    return (
+      <main className="tv-stage">
+        <header className="tv-topbar">
+          <div className="tv-brand"><span className="brand-mark">🎤</span><strong>KaraokeAI</strong></div>
+          <div className="tv-session">{session.sessionId.slice(-8).toUpperCase()}</div>
+        </header>
+        <section className="tv-main">
+          <div className="tv-hero">
+            {playing ? (
+              <>
+                <div className="tv-cover">
+                  {playing.thumbnailUrl ? <img src={playing.thumbnailUrl} alt="" /> : <span>🎵</span>}
+                </div>
+                <div className="tv-copy">
+                  <span className="eyebrow">🎤 AGORA NO PALCO</span>
+                  <h1>{playing.title}</h1>
+                  <h2>{playing.artist ?? 'Artista não informado'}</h2>
+                  <div className="tv-live-pill">● AO VIVO</div>
+                </div>
+              </>
+            ) : (
+              <div className="tv-waiting">
+                <span className="tv-mic">🎤</span>
+                <span className="eyebrow">PALCO PRONTO</span>
+                <h1>Aguardando a próxima música</h1>
+                <p>O anfitrião inicia a apresentação pelo painel de controle.</p>
+              </div>
+            )}
+          </div>
+          <aside className="tv-queue">
+            <div className="tv-queue-heading"><span className="eyebrow">FILA</span><strong>{upcoming.length}</strong></div>
+            {upcoming.slice(0, 6).map((entry, index) => (
+              <div className={`tv-queue-row ${entry.status === 'playing' ? 'active' : ''}`} key={entry.id}>
+                <span>{index + 1}</span>
+                <div className="tv-queue-thumb">{entry.thumbnailUrl ? <img src={entry.thumbnailUrl} alt="" /> : '🎵'}</div>
+                <div><strong>{entry.title}</strong><small>{entry.artist ?? 'Artista não informado'}</small></div>
+              </div>
+            ))}
+          </aside>
+        </section>
+      </main>
+    );
+  }
 
   if (view === 'home') {
     return (
@@ -672,6 +740,11 @@ export function App() {
               </button>
             </div>
             <SearchResults results={searchResults} onAdd={addSearchResultToQueue} />
+
+            <div className="host-stage-controls">
+              <button className="secondary" onClick={startNextSong} disabled={!session?.queue.some((entry) => entry.status === 'ready')}>▶ Iniciar próxima</button>
+              <button className="secondary" onClick={finishCurrentSong} disabled={!session?.queue.some((entry) => entry.status === 'playing')}>✓ Finalizar atual</button>
+            </div>
             {searchPerformed && !searching && searchResults.length === 0 && (
               <div className="search-empty">
                 <span aria-hidden="true">🔎</span>
@@ -715,6 +788,10 @@ export function App() {
               <span className="eyebrow">SALA CRIADA</span>
               <h2>Convide a galera</h2>
               <p className="muted">Mostre este QR Code na TV. Cada participante entra pelo próprio celular.</p>
+              <div className="tv-link-box">
+                <span>📺 Tela da TV</span>
+                <a href={tvJoinUrl} target="_blank" rel="noreferrer">Abrir palco nesta tela</a>
+              </div>
               <span className={`connection-badge ${connection}`}>{connection === 'online' ? '🟢 sessão conectada' : connection === 'connecting' ? '🟡 conectando…' : connection === 'error' ? '🔴 erro de conexão' : '⚪ local'}</span>
               {connection === 'error' && <button className="secondary reconnect-button" onClick={reconnectStoredHost}>Tentar novamente</button>}
             </div>
