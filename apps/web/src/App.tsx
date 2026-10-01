@@ -478,17 +478,27 @@ function preloadSingerAssets(entry: QueueEntry): Promise<PreloadedSingerAssets> 
 
 function SingerNextUp({
   session,
-  participantId
+  participantId,
+  onPrepare
 }: {
   session: SessionState;
   participantId: string;
+  onPrepare: (queueEntryId: string, entry: QueueEntry) => void | Promise<void>;
 }) {
   const playing = session.queue.find((entry) => entry.status === 'playing') ?? null;
-  const nextEntry = selectNextQueueEntry(session, playing?.ownerParticipantId);
+  const nextEntry = selectUpcomingQueueEntry(session, participantId, playing?.ownerParticipantId);
   const mine = Boolean(nextEntry && nextEntry.ownerParticipantId === participantId);
   const [preloadState, setPreloadState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [microphoneState, setMicrophoneState] = useState<'checking' | 'authorized' | 'permission-needed' | 'unavailable'>('checking');
   const [microphoneWarmed, setMicrophoneWarmed] = useState(false);
+
+  useEffect(() => {
+    if (!mine || !nextEntry || nextEntry.status !== 'queued' || !nextEntry.sourceUrl || !nextEntry.sourceId) {
+      return;
+    }
+
+    void onPrepare(nextEntry.id, nextEntry);
+  }, [mine, nextEntry?.id, nextEntry?.status, nextEntry?.sourceUrl, nextEntry?.sourceId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -607,7 +617,13 @@ function SingerNextUp({
         </div>
         <span className="tag">SUA VEZ</span>
       </div>
-      <p className="muted">A apresentação será iniciada automaticamente após a contagem sincronizada.</p>
+      <p className="muted">
+        {nextEntry.status === 'queued'
+          ? 'A música será preparada automaticamente antes da sua chamada ao palco.'
+          : nextEntry.status === 'preparing'
+            ? 'A música já está sendo preparada para a sua chamada ao palco.'
+            : 'A apresentação será iniciada automaticamente após a contagem sincronizada.'}
+      </p>
       <div className="singer-preload-grid">
         <span className={preloadState === 'ready' ? 'ready' : ''}>🎵 SongAsset {preloadState === 'ready' ? '✓' : preloadState === 'error' ? '!' : '…'}</span>
         <span className={preloadState === 'ready' ? 'ready' : ''}>📝 Letra sincronizada {preloadState === 'ready' ? '✓' : '…'}</span>
@@ -616,6 +632,38 @@ function SingerNextUp({
       </div>
     </div>
   );
+}
+
+function selectUpcomingQueueEntry(
+  session: SessionState,
+  participantId: string,
+  currentOwnerParticipantId?: string
+): QueueEntry | null {
+  const candidates = session.queue.filter((entry) => {
+    if (!['queued', 'preparing', 'ready'].includes(entry.status)) return false;
+    if (entry.ownerParticipantId !== participantId) return false;
+
+    if (session.roundMode.kind !== 'songs') return true;
+
+    const result = session.roundResultsByParticipant?.[entry.ownerParticipantId];
+    return !(result?.roundId === session.roundId && result.finished);
+  });
+
+  if (candidates.length === 0) return null;
+
+  const readyFirst = candidates
+    .slice()
+    .sort((left, right) => {
+      const rank = (entry: QueueEntry) =>
+        entry.status === 'ready' ? 0 : entry.status === 'preparing' ? 1 : 2;
+      return rank(left) - rank(right) || left.addedAt - right.addedAt;
+    });
+
+  const preferred = readyFirst.find(
+    (entry) => entry.ownerParticipantId !== currentOwnerParticipantId
+  );
+
+  return preferred ?? readyFirst[0] ?? null;
 }
 
 function playbackElapsedSeconds(entry: QueueEntry | null | undefined): number {
@@ -2624,7 +2672,11 @@ export function App() {
             <div className="connection-line"><span className={`connection-badge ${connection}`}>{connection === 'online' ? '🟢 conectado' : '🟡 conectando'}</span><span>{session.participants.length} participante(s)</span><span>· rodada {session.roundMode.kind === 'open' ? 'aberta' : `${session.roundMode.songCount} música(s)`}</span></div>
           </div>
           <RoundProgress session={session} participantId={currentParticipantId} />
-          <SingerNextUp session={session} participantId={currentParticipantId} />
+          <SingerNextUp
+            session={session}
+            participantId={currentParticipantId}
+            onPrepare={prepareQueueEntry}
+          />
           <SingerMicrophone
             session={session}
             participantId={currentParticipantId}
