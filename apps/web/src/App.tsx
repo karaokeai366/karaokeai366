@@ -61,10 +61,10 @@ function normalizeSearchText(value?: string): string {
   return (value ?? '')
     .toLocaleLowerCase('pt-BR')
     .normalize('NFD')
-    .replace(/[\\u0300-\\u036f]/g, '')
-    .replace(/[()[\\]{}|]/g, ' ')
-    .replace(/\\b(official|oficial|video|videoclipe|music video|audio|lyrics|lyric|karaoke|ao vivo|aovivo|hd|full hd|4k)\\b/g, ' ')
-    .replace(/\\s+/g, ' ')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[()[\]{}|]/g, ' ')
+    .replace(/\b(official|oficial|video|videoclipe|music video|audio|lyrics|lyric|karaoke|ao vivo|aovivo|hd|full hd|4k)\b/g, ' ')
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
