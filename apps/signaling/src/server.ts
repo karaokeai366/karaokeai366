@@ -133,8 +133,87 @@ function canAutoAdvanceEntry(state: any, entry: any): boolean {
   return !(result && result.roundId === state.roundId && result.finished);
 }
 
+function participantCompletedSongs(state: any, participantId: string): number {
+  const result = state?.roundResultsByParticipant?.[participantId];
+  if (!result || result.roundId !== state?.roundId) return 0;
+  return Number.isFinite(result.completedSongs) ? Math.max(0, Number(result.completedSongs)) : 0;
+}
+
+function latestQueueActivity(item: any): number {
+  const scoreSealedAt = Number(item?.score?.sealedAt);
+  const attempts = Array.isArray(item?.attempts) ? item.attempts : [];
+  const attemptActivity = attempts.reduce((latest: number, attempt: any) => {
+    const endedAt = Number(attempt?.endedAt);
+    return Number.isFinite(endedAt) ? Math.max(latest, endedAt) : latest;
+  }, 0);
+
+  return Math.max(
+    Number.isFinite(scoreSealedAt) ? scoreSealedAt : 0,
+    attemptActivity,
+    Number.isFinite(Number(item?.playbackStartedAt)) ? Number(item.playbackStartedAt) : 0
+  );
+}
+
+function latestQueueOwner(queue: any[]): string | undefined {
+  return queue.reduce<{ owner?: string; activity: number }>((latest, item: any) => {
+    const activity = latestQueueActivity(item);
+    if (activity > latest.activity) {
+      return { owner: item.ownerParticipantId, activity };
+    }
+    return latest;
+  }, { activity: 0 }).owner;
+}
+
 function findAutoAdvanceEntry(state: any, queue: any[]): any | null {
-  return queue.find((item: any) => canAutoAdvanceEntry(state, item)) ?? null;
+  const candidates = queue.filter((item: any) => canAutoAdvanceEntry(state, item));
+  if (candidates.length === 0) return null;
+
+  const minCompletedSongs = Math.min(
+    ...candidates.map((item: any) =>
+      participantCompletedSongs(state, item.ownerParticipantId)
+    )
+  );
+
+  const fairest = candidates.filter((item: any) =>
+    participantCompletedSongs(state, item.ownerParticipantId) === minCompletedSongs
+  );
+
+  const lastOwner = latestQueueOwner(queue);
+  const differentSinger = fairest.find((item: any) =>
+    item.ownerParticipantId !== lastOwner
+  );
+
+  return differentSinger ?? fairest[0] ?? candidates[0];
+}
+
+function startNextQueueEntry(state: any, queue: any[]): any[] | null {
+  if (queue.some((item: any) => item.status === 'playing')) return null;
+
+  const next = findAutoAdvanceEntry(state, queue);
+  if (!next) return null;
+
+  const startAt = Date.now();
+  const attemptState = transitionPerformanceAttempt(
+    next,
+    'playing',
+    startAt
+  );
+
+  return queue.map((item: any) =>
+    item.id === next.id
+      ? {
+          ...item,
+          status: 'playing',
+          roundId: state.roundId,
+          playbackStartedAt: startAt,
+          playbackPositionSeconds: 0,
+          playbackState: 'playing',
+          playbackPausedAt: undefined,
+          attempts: attemptState.attempts,
+          activePerformanceId: attemptState.activePerformanceId
+        }
+      : item
+  );
 }
 
 
@@ -333,6 +412,16 @@ wss.on('connection', (socket) => {
           return;
         }
 
+        if (
+          nextStatus === 'playing'
+          && currentState.roundMode?.kind === 'songs'
+          && currentState.roundResultsByParticipant?.[entry.ownerParticipantId]?.roundId === currentState.roundId
+          && currentState.roundResultsByParticipant?.[entry.ownerParticipantId]?.finished
+        ) {
+          reject(socket, 'Este participante já concluiu a rodada atual.');
+          return;
+        }
+
         if (nextStatus === 'playing' && queue.some((item: any) =>
           item.status === 'playing' && item.id !== queueEntryId
         )) {
@@ -411,6 +500,48 @@ wss.on('connection', (socket) => {
           };
         });
 
+        session.state = currentState;
+        broadcast(session, 'session.state', { state: session.state });
+        break;
+      }
+
+      case 'queue.next': {
+        const client = clientsBySocket.get(socket);
+        if (!client) {
+          reject(socket, 'Conecte-se a uma sessão primeiro.');
+          return;
+        }
+
+        const session = sessions.get(client.sessionId);
+        if (!session) {
+          reject(socket, 'Sessão não encontrada.');
+          return;
+        }
+        if (client.participantId !== session.hostParticipantId) {
+          reject(socket, 'Somente o Host pode avançar a fila.');
+          return;
+        }
+
+        const currentState = session.state as any;
+        if (currentState.status === 'finished') {
+          reject(socket, 'A apresentação foi encerrada. Configure uma nova rodada.');
+          return;
+        }
+
+        const queue = Array.isArray(currentState.queue) ? currentState.queue : [];
+        const nextQueue = startNextQueueEntry(currentState, queue);
+
+        if (!nextQueue) {
+          if (!queue.some((item: any) => item.status === 'ready')) {
+            reject(socket, 'Não há outra música pronta para entrar no palco.');
+          } else {
+            reject(socket, 'Não foi encontrada uma música elegível para o próximo cantor.');
+          }
+          return;
+        }
+
+        currentState.queue = nextQueue;
+        currentState.status = 'playing';
         session.state = currentState;
         broadcast(session, 'session.state', { state: session.state });
         break;
@@ -632,29 +763,9 @@ wss.on('connection', (socket) => {
           );
 
           if (currentState.autoAdvance !== false) {
-            const next = findAutoAdvanceEntry(currentState, nextQueue);
-            if (next) {
-              const startAt = Date.now();
-              const nextAttempt = transitionPerformanceAttempt(
-                next,
-                'playing',
-                startAt
-              );
-              nextQueue = nextQueue.map((item: any) =>
-                item.id === next.id
-                  ? {
-                      ...item,
-                      status: 'playing',
-                      roundId: currentState.roundId,
-                      playbackStartedAt: startAt,
-                      playbackPositionSeconds: 0,
-                      playbackState: 'playing',
-                      playbackPausedAt: undefined,
-                      attempts: nextAttempt.attempts,
-                      activePerformanceId: nextAttempt.activePerformanceId
-                    }
-                  : item
-              );
+            const advancedQueue = startNextQueueEntry(currentState, nextQueue);
+            if (advancedQueue) {
+              nextQueue = advancedQueue;
             }
           }
 
