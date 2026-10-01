@@ -14,6 +14,7 @@ export type MessageType =
   | 'queue.add'
   | 'queue.remove'
   | 'queue.status.set'
+  | 'performance.complete'
   | 'round.configure';
 
 export interface Envelope<TPayload = unknown> {
@@ -64,12 +65,14 @@ export interface HostTransferRequest {
 }
 
 export interface PerformanceCompleteRequest {
+  queueEntryId: string;
   performanceId: string;
   score: {
     overall: number;
-    pitch?: number;
-    rhythm?: number;
-    precision?: number;
-    stability?: number;
+    pitch: number;
+    precision: number;
+    rhythm: number;
+    stability: number;
+    matchedSamples: number;
   };
 }
