@@ -4,17 +4,36 @@ Optional local worker for media discovery and preparation.
 
 ## What it does now
 
-- Search public media-source metadata using yt-dlp's search support.
+- Search music catalog metadata and return title, artist, album, duration, thumbnail and source.
 - Download an explicitly selected source URL to the worker's local storage.
-- Retrieve plain/synchronized lyrics from LRCLIB.
-- Probe downloaded media duration with ffprobe.
-- Return metadata suitable for a SongAsset manifest.
+- Normalize the selected media to a processing WAV.
+- Retrieve plain/synchronized lyrics from LRCLIB and write `lyrics.lrc` / `lyrics.json`.
+- Separate vocals and instrumental with the installed source-separation adapter.
+- Analyze the vocal stem with pYIN to generate a time-based melody reference.
+- Estimate BPM and an initial musical key.
+- Write a portable `manifest.json` with artifact URLs and SHA-256 integrity entries.
+- Expose the generated SongAsset files below `/media/{assetId}/...`.
+
+## Preparation result
+
+A successful `POST /prepare` produces a SongAsset folder containing, when available:
+
+- the original downloaded media;
+- `mix.wav` as the normalized processing source;
+- `vocals.wav`;
+- `instrumental.wav`;
+- `lyrics.lrc` and `lyrics.json`;
+- `melody.json`;
+- a downloaded cover image;
+- `manifest.json`.
+
+Lyrics may be missing when no matching catalog entry is available. The core preparation still requires valid vocal, instrumental and melody artifacts before the session marks the queue entry as ready.
 
 ## What it does not do yet
 
-- source separation is not enabled in this first slice;
-- melody extraction is not enabled;
-- it does not expose a cloud media library;
+- fine-grained lyric alignment fallback when synchronized lyrics are unavailable;
+- advanced melody cleanup and phrase segmentation;
+- cloud media library;
 - it does not bundle copyrighted media in the repository.
 
 ## Legal/usage boundary
