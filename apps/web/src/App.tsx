@@ -51,8 +51,51 @@ function versionLabels(result: SongSearchResult): string[] {
 
 function sourceLabel(source?: string): string {
   if (!source) return 'Fonte';
+  if (source === 'youtube-music') return 'YouTube Music';
+  if (source === 'youtube') return 'YouTube';
   if (source === 'yt-dlp') return 'YouTube';
   return source;
+}
+
+function normalizeSearchText(value?: string): string {
+  return (value ?? '')
+    .toLocaleLowerCase('pt-BR')
+    .normalize('NFD')
+    .replace(/[\\u0300-\\u036f]/g, '')
+    .replace(/[()[\\]{}|]/g, ' ')
+    .replace(/\\b(official|oficial|video|videoclipe|music video|audio|lyrics|lyric|karaoke|ao vivo|aovivo|hd|full hd|4k)\\b/g, ' ')
+    .replace(/\\s+/g, ' ')
+    .trim();
+}
+
+function songGroupKey(result: SongSearchResult): string | null {
+  const title = normalizeSearchText(result.title);
+  const artist = normalizeSearchText(result.artist);
+
+  if (!title || !artist) return null;
+  return \`\${title}::\${artist}\`;
+}
+
+function groupSearchResults(results: SongSearchResult[]): SongSearchResult[][] {
+  const grouped = new Map<string, SongSearchResult[]>();
+  const singles: SongSearchResult[][] = [];
+
+  for (const result of results) {
+    const key = songGroupKey(result);
+    if (!key) {
+      singles.push([result]);
+      continue;
+    }
+
+    const group = grouped.get(key);
+    if (group) {
+      group.push(result);
+    } else {
+      grouped.set(key, [result]);
+    }
+  }
+
+  return [...grouped.values(), ...singles];
 }
 
 function SearchResults({
@@ -64,18 +107,37 @@ function SearchResults({
 }) {
   if (results.length === 0) return null;
 
+  const groups = groupSearchResults(results);
+
   return (
     <div className="search-results">
       <div className="search-results-heading">
         <span>{results.length} resultado(s)</span>
         <small>Escolha a versão correta antes de colocar na fila</small>
       </div>
-      {results.map((result) => {
-        const tags = versionLabels(result);
-        const duration = formatDuration(result.durationSeconds);
+
+      {groups.map((group, groupIndex) => {
+        const groupKey = songGroupKey(group[0]) ?? \`single-\${groupIndex}\`;
+        const hasVersions = group.length > 1;
 
         return (
-          <article className="search-result" key={result.sourceId}>
+          <section className={\`search-group \${hasVersions ? 'has-versions' : ''}\`} key={groupKey}>
+            {hasVersions && (
+              <div className="search-group-heading">
+                <div>
+                  <strong>{group[0].title}</strong>
+                  <span>{group[0].artist ?? 'Artista não identificado'}</span>
+                </div>
+                <span className="version-count">{group.length} versões</span>
+              </div>
+            )}
+
+            {group.map((result) => {
+              const tags = versionLabels(result);
+              const duration = formatDuration(result.durationSeconds);
+
+              return (
+                <article className="search-result" key={result.sourceId}>
             <div className="result-thumb">
               {result.thumbnailUrl ? (
                 <img src={result.thumbnailUrl} alt={`Capa de ${result.title}`} loading="lazy" />
@@ -118,7 +180,10 @@ function SearchResults({
                 + Fila
               </button>
             </div>
-          </article>
+                </article>
+              );
+            })}
+          </section>
         );
       })}
     </div>
