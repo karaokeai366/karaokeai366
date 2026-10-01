@@ -342,6 +342,52 @@ interface PreloadedSingerAssets {
 
 const singerPreloadCache = new Map<string, Promise<PreloadedSingerAssets>>();
 
+interface SharedMicrophone {
+  stream: MediaStream;
+  leases: number;
+}
+
+const sharedMicrophones = new Map<string, SharedMicrophone>();
+
+async function acquireSharedMicrophone(participantId: string): Promise<MediaStream> {
+  const existing = sharedMicrophones.get(participantId);
+  if (existing) {
+    existing.leases += 1;
+    return existing.stream;
+  }
+
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+      channelCount: 1
+    },
+    video: false
+  });
+
+  sharedMicrophones.set(participantId, {
+    stream,
+    leases: 1
+  });
+
+  return stream;
+}
+
+function releaseSharedMicrophone(participantId: string, stream: MediaStream | null): void {
+  if (!stream) return;
+
+  const shared = sharedMicrophones.get(participantId);
+  if (!shared || shared.stream !== stream) return;
+
+  shared.leases -= 1;
+
+  if (shared.leases > 0) return;
+
+  shared.stream.getTracks().forEach((track) => track.stop());
+  sharedMicrophones.delete(participantId);
+}
+
 async function loadSingerAssets(entry: QueueEntry): Promise<PreloadedSingerAssets> {
   if (!entry.manifestUrl) {
     throw new Error('SongAsset ainda não disponível.');
@@ -507,6 +553,33 @@ function SingerNextUp({
       cancelled = true;
     };
   }, [mine]);
+
+  useEffect(() => {
+    let stream: MediaStream | null = null;
+    let cancelled = false;
+
+    if (!mine || microphoneState !== 'authorized') return;
+
+    acquireSharedMicrophone(participantId)
+      .then((nextStream) => {
+        if (cancelled) {
+          releaseSharedMicrophone(participantId, nextStream);
+          return;
+        }
+        stream = nextStream;
+        setMicrophoneState('authorized');
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setMicrophoneState('permission-needed');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      releaseSharedMicrophone(participantId, stream);
+    };
+  }, [mine, microphoneState, participantId]);
 
   if (!mine || !nextEntry) return null;
 
@@ -709,6 +782,7 @@ function SingerMicrophone({
   const performanceStartRef = useRef<number | null>(null);
   const previousPerformanceIdRef = useRef<string | null>(null);
   const currentPlayingRef = useRef<QueueEntry | null>(playing);
+  const microphoneLeaseRef = useRef(false);
 
   currentPlayingRef.current = playing;
 
@@ -726,7 +800,12 @@ function SingerMicrophone({
     peerRef.current?.close();
     peerRef.current = null;
 
-    streamRef.current?.getTracks().forEach((track) => track.stop());
+    if (microphoneLeaseRef.current) {
+      releaseSharedMicrophone(participantId, streamRef.current);
+      microphoneLeaseRef.current = false;
+    } else {
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+    }
     streamRef.current = null;
 
     if (analysisFrameRef.current !== null) {
@@ -934,16 +1013,8 @@ function SingerMicrophone({
         performanceId: playing.activePerformanceId ?? playing.id + '-' + startedAt
       };
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          channelCount: 1
-        },
-        video: false
-      });
-
+      const stream = await acquireSharedMicrophone(participantId);
+      microphoneLeaseRef.current = true;
       streamRef.current = stream;
 
       const AudioContextCtor = window.AudioContext
