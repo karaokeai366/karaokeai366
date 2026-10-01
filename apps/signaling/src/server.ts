@@ -203,7 +203,18 @@ wss.on('connection', (socket) => {
         }
 
         currentState.queue = queue.map((item: any) =>
-          item.id === queueEntryId ? { ...item, status: nextStatus } : item
+          item.id === queueEntryId
+            ? {
+                ...item,
+                status: nextStatus,
+                ...(message.payload?.assetId
+                  ? { assetId: String(message.payload.assetId).slice(0, 128) }
+                  : {}),
+                ...(message.payload?.manifestUrl
+                  ? { manifestUrl: String(message.payload.manifestUrl).slice(0, 2000) }
+                  : {})
+              }
+            : item
         );
         session.state = currentState;
         broadcast(session, 'session.state', { state: session.state });
