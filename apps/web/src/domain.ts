@@ -30,6 +30,7 @@ export interface QueueEntry {
   sourceId?: string;
   source?: string;
   sourceUrl?: string;
+  thumbnailUrl?: string;
   requestedKey?: string;
   addedAt: number;
   status: 'queued' | 'preparing' | 'ready' | 'playing' | 'completed' | 'cancelled';
