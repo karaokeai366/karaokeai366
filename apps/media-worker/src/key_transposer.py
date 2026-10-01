@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -114,6 +115,14 @@ def transpose_asset_key(
     if not instrumental_path.exists() or not melody_path.exists():
         raise ValueError("Artefatos do SongAsset não encontrados.")
 
+    base_instrumental_path = folder / "instrumental.base.wav"
+    base_melody_path = folder / "melody.base.json"
+
+    if not base_instrumental_path.exists():
+        shutil.copyfile(instrumental_path, base_instrumental_path)
+    if not base_melody_path.exists():
+        shutil.copyfile(melody_path, base_melody_path)
+
     if delta != 0:
         try:
             import librosa
@@ -122,7 +131,7 @@ def transpose_asset_key(
             raise ValueError("librosa e soundfile são necessários para transpor o instrumental.") from exc
 
         audio, sr = librosa.load(
-            str(instrumental_path),
+            str(base_instrumental_path),
             sr=None,
             mono=False,
         )
@@ -147,7 +156,7 @@ def transpose_asset_key(
         finally:
             temp_path.unlink(missing_ok=True)
 
-    melody_payload = json.loads(melody_path.read_text(encoding="utf-8"))
+    melody_payload = json.loads(base_melody_path.read_text(encoding="utf-8"))
     melody_transposed = transpose_melody_payload(
         melody_payload,
         delta,
