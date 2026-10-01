@@ -65,11 +65,14 @@ function transitionPerformanceAttempt(
 
   if (nextStatus === 'playing') {
     activePerformanceId = requestedPerformanceId
-      || item.activePerformanceId
+      || (item.status === 'playing' ? item.activePerformanceId : undefined)
       || `${item.id}-${startAt}-${randomUUID().slice(0, 8)}`;
 
     const hasActiveAttempt = attempts.some(
-      (attempt: any) => attempt.performanceId === activePerformanceId && !attempt.cancelled
+      (attempt: any) =>
+        attempt.performanceId === activePerformanceId
+        && !attempt.cancelled
+        && !attempt.official
     );
     if (!hasActiveAttempt) {
       attempts.push({
@@ -479,7 +482,15 @@ wss.on('connection', (socket) => {
               ...attempts[activeIndex],
               endedAt: Date.now(),
               cancelled: false,
-              official: true
+              official: true,
+              score: {
+                overall,
+                pitch,
+                precision,
+                rhythm,
+                stability,
+                matchedSamples
+              }
             };
           }
 
