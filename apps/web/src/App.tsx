@@ -2243,6 +2243,22 @@ export function App() {
             <div className="stat-card"><span>Rodada</span><strong>{session?.roundMode.kind === 'open' ? '∞' : session?.roundMode.songCount ?? 1}</strong></div>
           </div>
           {session && <RoundProgress session={session} participantId={currentParticipantId} />}
+          <div className="panel auto-advance-panel">
+            <div>
+              <span className="eyebrow">▶ CONTROLE DO PALCO</span>
+              <h3>Avanço automático</h3>
+              <p className="muted small-note">
+                Depois da nota oficial, a próxima música começa automaticamente após alguns segundos.
+              </p>
+            </div>
+            <button
+              type="button"
+              className={`toggle-button ${session.autoAdvance !== false ? 'selected' : ''}`}
+              onClick={() => setAutoAdvanceEnabled(session.autoAdvance === false)}
+            >
+              {session.autoAdvance !== false ? 'Ligado' : 'Desligado'}
+            </button>
+          </div>
           <div className="panel">
             <div className="panel-heading">
               <div><span className="eyebrow">RODADA DE AVALIAÇÃO</span><h3>Quantas músicas valem a nota final?</h3></div>
