@@ -38,6 +38,7 @@ export interface QueueEntry {
   preparationProgress?: number;
   preparationMessage?: string;
   playbackStartedAt?: number;
+  score?: PerformanceScore;
   addedAt: number;
   status: 'queued' | 'preparing' | 'ready' | 'playing' | 'completed' | 'cancelled';
 }
