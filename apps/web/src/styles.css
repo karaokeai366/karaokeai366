@@ -342,3 +342,7 @@ button { border: 0; border-radius: 14px; min-height: 48px; padding: 0 18px; colo
 }
 
 .tv-paused-badge { display: inline-flex; align-items: center; gap: 5px; margin-left: 10px; padding: 6px 10px; border-radius: 999px; border: 1px solid #6b5a2f; background: #2a2415; color: #f0d27a; font-size: 10px; font-weight: 900; letter-spacing: .08em; }
+
+.tv-next-singer { display: flex; flex-direction: column; gap: 5px; margin: 14px 0; padding: 13px 14px; border: 1px solid #343d5f; border-radius: 14px; background: #11172a; }
+.tv-next-singer strong { font-size: 15px; }
+.tv-next-singer > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #8d96af; font-size: 12px; }
