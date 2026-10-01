@@ -2554,15 +2554,12 @@ export function App() {
   function setAutoAdvanceEnabled(enabled: boolean) {
     if (!session || !transport || session.hostParticipantId !== currentParticipantId) return;
 
-    const nextState: SessionState = {
+    setSession({
       ...session,
       autoAdvance: enabled
-    };
-
-    setSession(nextState);
-    localStorage.setItem('karaokeai.session.v1', JSON.stringify(nextState));
-    transport.sendRaw('session.state.set', session.sessionId, currentParticipantId, {
-      state: nextState
+    });
+    transport.sendRaw('session.settings.set', session.sessionId, currentParticipantId, {
+      autoAdvance: enabled
     });
   }
 
