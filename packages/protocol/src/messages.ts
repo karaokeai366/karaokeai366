@@ -13,6 +13,7 @@ export type MessageType =
   | 'host.disconnected'
   | 'session.command'
   | 'session.state.set'
+  | 'session.settings.set'
   | 'queue.add'
   | 'queue.remove'
   | 'queue.status.set'
@@ -30,6 +31,10 @@ export interface Envelope<TPayload = unknown> {
   senderId: string;
   timestamp: number;
   payload: TPayload;
+}
+
+export interface SessionSettingsSetRequest {
+  autoAdvance?: boolean;
 }
 
 export interface QueueAddRequest {
