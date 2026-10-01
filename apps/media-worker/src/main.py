@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .pipeline import PipelineError, SOURCE_SEPARATION_ENABLED, prepare_asset
+from .key_transposer import transpose_asset_key
 from pydantic import BaseModel, Field
 
 APP_VERSION = "0.1.0"
@@ -115,6 +116,11 @@ class DownloadRequest(BaseModel):
     asset_id: str | None = None
 
 
+class KeyTranspositionRequest(BaseModel):
+    asset_id: str = Field(min_length=1, max_length=64)
+    target_key: str = Field(min_length=1, max_length=4)
+
+
 class PrepareRequest(BaseModel):
     source_url: str = Field(min_length=1)
     media_kind: str = Field(default="video", pattern="^(audio|video)$")
@@ -190,6 +196,7 @@ def health() -> dict[str, Any]:
         "ffprobe": shutil.which("ffprobe") is not None,
         "audio_separator": shutil.which("audio-separator") is not None,
         "source_separation_enabled": SOURCE_SEPARATION_ENABLED,
+    "key_transposition": True,
     }
 
 
@@ -362,6 +369,32 @@ async def prepare_status(job_id: str) -> dict[str, Any]:
         result["manifest"] = manifest
         result["manifestUrl"] = f"/media/{manifest['assetId']}/manifest.json"
     return result
+
+
+@app.post("/transpose-key")
+async def transpose_key(request: KeyTranspositionRequest) -> dict[str, Any]:
+    asset_id = safe_asset_id(request.asset_id)
+    target_key = request.target_key.strip()
+
+    try:
+        manifest = await asyncio.to_thread(
+            transpose_asset_key,
+            root=ROOT,
+            asset_id=asset_id,
+            target_key=target_key,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Falha ao alterar o tom: {exc}") from exc
+
+    return {
+        "assetId": manifest["assetId"],
+        "originalKey": manifest.get("originalKey"),
+        "selectedKey": manifest.get("selectedKey"),
+        "manifest": manifest,
+        "manifestUrl": f"/media/{asset_id}/manifest.json",
+    }
 
 
 @app.post("/download", response_model=DownloadResponse)
