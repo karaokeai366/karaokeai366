@@ -75,3 +75,14 @@ export function buildJoinUrl(session: SessionState): string {
   });
   return window.location.origin + '/?' + params.toString();
 }
+
+
+export function buildTvJoinUrl(session: SessionState): string {
+  const params = new URLSearchParams({
+    join: '1',
+    tv: '1',
+    session: session.sessionId,
+    host: session.hostParticipantId
+  });
+  return window.location.origin + '/?' + params.toString();
+}
