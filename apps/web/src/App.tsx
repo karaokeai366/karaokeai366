@@ -30,8 +30,15 @@ function getSignalingUrl(): string {
 
 const MUSICAL_KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
+function pitchClass(value?: string): string {
+  if (!value) return '';
+  const match = value.match(/^[A-G](?:#|b)?/i);
+  return match ? match[0].charAt(0).toUpperCase() + match[0].slice(1) : '';
+}
+
 function keyLabel(value?: string): string {
-  return value ? `Tom ${value}` : 'Tom original';
+  const key = pitchClass(value);
+  return key ? `Tom ${key}` : 'Tom original';
 }
 
 function scoreLabel(score: number): string {
@@ -316,13 +323,13 @@ function QueueList({
                   <label className="queue-key-select">
                     <span>{keyLabel(entry.selectedKey ?? entry.originalKey)}</span>
                     <select
-                      value={changingKeyId === entry.id ? '' : (entry.selectedKey ?? entry.originalKey ?? '')}
+                      value={changingKeyId === entry.id ? '' : pitchClass(entry.selectedKey ?? entry.originalKey)}
                       disabled={changingKeyId === entry.id}
                       onChange={(event) => onChangeKey(entry.id, entry, event.target.value)}
                     >
                       <option value="" disabled>Escolher tom</option>
                       {entry.originalKey && (
-                        <option value={entry.originalKey}>{entry.originalKey} (original)</option>
+                        <option value={pitchClass(entry.originalKey)}>{pitchClass(entry.originalKey)} (original)</option>
                       )}
                       {MUSICAL_KEYS
                         .filter((key) => key !== entry.originalKey)
