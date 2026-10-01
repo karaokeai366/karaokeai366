@@ -34,6 +34,8 @@ export interface QueueEntry {
   sourceUrl?: string;
   thumbnailUrl?: string;
   requestedKey?: string;
+  originalKey?: string;
+  selectedKey?: string;
   assetId?: string;
   manifestUrl?: string;
   preparationStage?: string;
