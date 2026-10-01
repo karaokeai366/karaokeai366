@@ -112,7 +112,7 @@ function ensureRoundState(state: any): void {
 }
 
 function getPlaybackPositionSeconds(item: any): number {
-  if (Number.isFinite(item?.playbackPositionSeconds)) {
+  if (item?.playbackState === 'paused' && Number.isFinite(item?.playbackPositionSeconds)) {
     return Math.max(0, Number(item.playbackPositionSeconds));
   }
 
@@ -120,7 +120,7 @@ function getPlaybackPositionSeconds(item: any): number {
     return Math.max(0, (Date.now() - Number(item.playbackStartedAt)) / 1000);
   }
 
-  return 0;
+  return Math.max(0, Number(item?.playbackPositionSeconds ?? 0));
 }
 
 function canAutoAdvanceEntry(state: any, entry: any): boolean {
