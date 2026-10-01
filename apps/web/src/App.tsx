@@ -333,6 +333,145 @@ function selectNextQueueEntry(
   return differentSinger ?? fairest[0] ?? candidates[0];
 }
 
+const singerPreloadCache = new Map<string, Promise<void>>();
+
+function preloadSingerAssets(entry: QueueEntry): Promise<void> {
+  if (!entry.manifestUrl) return Promise.reject(new Error('SongAsset ainda não disponível.'));
+
+  const existing = singerPreloadCache.get(entry.id);
+  if (existing) return existing;
+
+  const job = (async () => {
+    const manifest = await getSongAssetManifest(entry.manifestUrl!);
+    const urls = [
+      resolveSongAssetUrl(entry.manifestUrl!, manifest.files.lyricsJson),
+      resolveSongAssetUrl(entry.manifestUrl!, manifest.files.melodyJson),
+      resolveSongAssetUrl(entry.manifestUrl!, manifest.files.instrumental)
+    ].filter((value): value is string => Boolean(value));
+
+    await Promise.all(
+      urls.map((url) => fetch(url, { cache: 'force-cache' }).then((response) => {
+        if (!response.ok) throw new Error(`Falha ao pré-carregar o recurso (${response.status}).`);
+      }))
+    );
+  })();
+
+  singerPreloadCache.set(entry.id, job);
+  job.catch(() => {
+    singerPreloadCache.delete(entry.id);
+  });
+
+  return job;
+}
+
+function SingerNextUp({
+  session,
+  participantId
+}: {
+  session: SessionState;
+  participantId: string;
+}) {
+  const playing = session.queue.find((entry) => entry.status === 'playing') ?? null;
+  const nextEntry = selectNextQueueEntry(session, playing?.ownerParticipantId);
+  const mine = Boolean(nextEntry && nextEntry.ownerParticipantId === participantId);
+  const [preloadState, setPreloadState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [microphoneState, setMicrophoneState] = useState<'checking' | 'authorized' | 'permission-needed' | 'unavailable'>('checking');
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!mine || !nextEntry?.manifestUrl) {
+      setPreloadState('idle');
+      return;
+    }
+
+    setPreloadState('loading');
+    preloadSingerAssets(nextEntry)
+      .then(() => {
+        if (!cancelled) setPreloadState('ready');
+      })
+      .catch(() => {
+        if (!cancelled) setPreloadState('error');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mine, nextEntry?.id, nextEntry?.manifestUrl]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!mine) {
+      setMicrophoneState('checking');
+      return;
+    }
+
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      setMicrophoneState('unavailable');
+      return;
+    }
+
+    const permissionsApi = navigator.permissions;
+    if (!permissionsApi?.query) {
+      setMicrophoneState('permission-needed');
+      return;
+    }
+
+    permissionsApi.query({ name: 'microphone' })
+      .then((status) => {
+        if (cancelled) return;
+
+        const update = () => {
+          if (status.state === 'granted') {
+            setMicrophoneState('authorized');
+          } else {
+            setMicrophoneState('permission-needed');
+          }
+        };
+
+        update();
+        status.onchange = update;
+      })
+      .catch(() => {
+        if (!cancelled) setMicrophoneState('permission-needed');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mine]);
+
+  if (!mine || !nextEntry) return null;
+
+  const microphoneLabel = microphoneState === 'authorized'
+    ? 'Microfone autorizado'
+    : microphoneState === 'permission-needed'
+      ? 'Microfone pronto — será solicitado ao ativar'
+      : microphoneState === 'unavailable'
+        ? 'Microfone indisponível neste navegador'
+        : 'Verificando microfone…';
+
+  return (
+    <div className="panel singer-next-up">
+      <div className="panel-heading">
+        <div>
+          <span className="eyebrow">🎤 PRÓXIMO NO PALCO</span>
+          <h3>{nextEntry.title}</h3>
+        </div>
+        <span className="tag">SUA VEZ</span>
+      </div>
+      <p className="muted">A apresentação será iniciada automaticamente após a contagem sincronizada.</p>
+      <div className="singer-preload-grid">
+        <span className={preloadState === 'ready' ? 'ready' : ''}>🎵 SongAsset {preloadState === 'ready' ? '✓' : preloadState === 'error' ? '!' : '…'}</span>
+        <span className={preloadState === 'ready' ? 'ready' : ''}>📝 Letra sincronizada {preloadState === 'ready' ? '✓' : '…'}</span>
+        <span className={preloadState === 'ready' ? 'ready' : ''}>🎼 Melodia {preloadState === 'ready' ? '✓' : '…'}</span>
+        <span className={microphoneState === 'authorized' ? 'ready' : ''}>🎙️ {microphoneLabel}</span>
+      </div>
+    </div>
+  );
+}
+
 function playbackElapsedSeconds(entry: QueueEntry | null | undefined): number {
   if (!entry) return 0;
   if (entry.playbackState === 'paused') {
@@ -2389,6 +2528,7 @@ export function App() {
             <div className="connection-line"><span className={`connection-badge ${connection}`}>{connection === 'online' ? '🟢 conectado' : '🟡 conectando'}</span><span>{session.participants.length} participante(s)</span><span>· rodada {session.roundMode.kind === 'open' ? 'aberta' : `${session.roundMode.songCount} música(s)`}</span></div>
           </div>
           <RoundProgress session={session} participantId={currentParticipantId} />
+          <SingerNextUp session={session} participantId={currentParticipantId} />
           <SingerMicrophone
             session={session}
             participantId={currentParticipantId}
