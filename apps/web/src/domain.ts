@@ -24,6 +24,15 @@ export interface Participant {
   online: boolean;
 }
 
+export interface PerformanceAttempt {
+  performanceId: string;
+  startedAt: number;
+  endedAt?: number;
+  cancelled: boolean;
+  official: boolean;
+  cancelReason?: 'restart' | 'key-test' | 'abandoned';
+}
+
 export interface QueueEntry {
   id: string;
   ownerParticipantId: string;
@@ -43,6 +52,8 @@ export interface QueueEntry {
   preparationMessage?: string;
   playbackStartedAt?: number;
   durationSeconds?: number;
+  activePerformanceId?: string;
+  attempts?: PerformanceAttempt[];
   score?: PerformanceScore;
   addedAt: number;
   status: 'queued' | 'preparing' | 'ready' | 'playing' | 'completed' | 'cancelled';
