@@ -44,6 +44,9 @@ export interface QueueStatusSetRequest {
   status: 'queued' | 'preparing' | 'ready' | 'playing' | 'completed' | 'cancelled';
   assetId?: string;
   manifestUrl?: string;
+  preparationStage?: string;
+  preparationProgress?: number;
+  preparationMessage?: string;
 }
 
 export interface RoundConfigureRequest {
