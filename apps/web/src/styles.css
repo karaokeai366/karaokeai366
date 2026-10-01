@@ -287,3 +287,5 @@ button { border: 0; border-radius: 14px; min-height: 48px; padding: 0 18px; colo
 }
 
 .microphone-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.restart-button { border-color: #4b456a !important; }
