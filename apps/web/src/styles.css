@@ -289,3 +289,13 @@ button { border: 0; border-radius: 14px; min-height: 48px; padding: 0 18px; colo
 .microphone-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .restart-button { border-color: #4b456a !important; }
+
+.round-progress-panel { overflow: hidden; }
+.round-score-pill { display: inline-flex; align-items: center; min-height: 30px; padding: 0 10px; border-radius: 999px; border: 1px solid #38446b; background: #141a31; color: #dce2ff; font-size: 11px; font-weight: 900; }
+.round-progress-stats { display: flex; align-items: baseline; gap: 6px; margin-top: 4px; color: #7f89a4; font-size: 12px; }
+.round-progress-stats strong { color: #e2e5f5; font-size: 30px; line-height: 1; }
+.round-progress { height: 7px; margin-top: 13px; overflow: hidden; border-radius: 999px; background: #1b2237; }
+.round-progress span { display: block; height: 100%; border-radius: inherit; background: #6e78ff; transition: width .3s ease; }
+.round-song-scores { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.round-song-scores span { padding: 5px 8px; border: 1px solid #252e48; border-radius: 999px; color: #78829e; background: #0d1220; font-size: 10px; }
+.round-song-scores strong { color: #c4cbe2; }
