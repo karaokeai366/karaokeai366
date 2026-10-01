@@ -14,7 +14,7 @@ import { getSongAssetManifest, getSongPreparationStatus, resolveSongAssetUrl, se
 import type { SongSearchResult } from '../../../packages/media/src/song';
 import { getWebRtcConfiguration, isWebRtcSupported, type WebRtcSignal } from './webrtc';
 import { estimatePitch, pushPitchSample } from './pitchDetector';
-import { scorePerformance, type MelodyReferenceNote, type PerformanceScore, type PitchSample } from '../../../packages/session/src/scoring';
+import { scorePerformance, suggestTranspositionSemitones, type MelodyReferenceNote, type PerformanceScore, type PitchSample } from '../../../packages/session/src/scoring';
 
 type View = 'home' | 'host' | 'join' | 'participant' | 'tv';
 
@@ -29,6 +29,10 @@ function getSignalingUrl(): string {
 }
 
 const MUSICAL_KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const PITCH_CLASS_INDEX: Record<string, number> = {
+  C: 0, 'C#': 1, Db: 1, D: 2, 'D#': 3, Eb: 3, E: 4, F: 5,
+  'F#': 6, Gb: 6, G: 7, 'G#': 8, Ab: 8, A: 9, 'A#': 10, Bb: 10, B: 11
+};
 
 function pitchClass(value?: string): string {
   if (!value) return '';
@@ -39,6 +43,21 @@ function pitchClass(value?: string): string {
 function keyLabel(value?: string): string {
   const key = pitchClass(value);
   return key ? `Tom ${key}` : 'Tom original';
+}
+
+function shiftMusicalKey(value: string | undefined, semitones: number): string | null {
+  const current = pitchClass(value);
+  const index = current ? PITCH_CLASS_INDEX[current] : undefined;
+  if (index === undefined) return null;
+
+  return MUSICAL_KEYS[(index + semitones + 120) % 12];
+}
+
+function semitoneLabel(semitones: number): string {
+  const absolute = Math.abs(semitones);
+  return semitones < 0
+    ? `Baixar ${absolute} semitom${absolute === 1 ? '' : 's'}`
+    : `Subir ${absolute} semitom${absolute === 1 ? '' : 's'}`;
 }
 
 function scoreLabel(score: number): string {
@@ -265,13 +284,15 @@ function QueueList({
   currentParticipantId,
   onRemove,
   onPrepare,
-  onChangeKey
+  onChangeKey,
+  changingKeyId
 }: {
   session: SessionState;
   currentParticipantId: string;
   onRemove: (queueEntryId: string) => void;
   onPrepare: (queueEntryId: string, source: QueueEntry) => void;
-  onChangeKey: (queueEntryId: string, entry: QueueEntry, targetKey: string) => void;
+  onChangeKey: (queueEntryId: string, entry: QueueEntry, targetKey: string, restartPlayback?: boolean) => Promise<boolean> | void;
+  changingKeyId: string | null;
 }) {
   if (session.queue.length === 0) {
     return <div className="empty-queue">A fila está vazia. A primeira música pode ser adicionada pelo celular de quem vai cantar.</div>;
@@ -361,12 +382,14 @@ function SingerMicrophone({
   session,
   participantId,
   transport,
-  signals
+  signals,
+  onChangeKey
 }: {
   session: SessionState;
   participantId: string;
   transport: WebSocketTransport | null;
   signals: Array<{ id?: string; payload?: { command?: string; data?: WebRtcSignal } }>;
+  onChangeKey: (queueEntryId: string, entry: QueueEntry, targetKey: string, restartPlayback?: boolean) => Promise<boolean> | void;
 }) {
   const playing = session.queue.find((entry) => entry.status === 'playing') ?? null;
   const tv = session.participants.find((participant) => participant.role === 'tv');
@@ -382,10 +405,17 @@ function SingerMicrophone({
   const analysisContextRef = useRef<AudioContext | null>(null);
   const performanceRef = useRef<{ queueEntryId: string; performanceId: string } | null>(null);
   const previousPlayingIdRef = useRef<string | null>(null);
+  const previousPlayingStatusRef = useRef<QueueEntry['status'] | null>(null);
+  const toneSuggestionCheckedRef = useRef(false);
+  const previousToneKeyRef = useRef<string | null>(null);
 
   const [active, setActive] = useState(false);
   const [error, setError] = useState('');
   const [supported, setSupported] = useState(true);
+  const [toneSuggestion, setToneSuggestion] = useState<{ semitones: number; targetKey: string } | null>(null);
+  const [toneBusy, setToneBusy] = useState(false);
+  const [showManualTone, setShowManualTone] = useState(false);
+  const [manualTone, setManualTone] = useState('');
 
   function stop() {
     peerRef.current?.close();
@@ -405,6 +435,9 @@ function SingerMicrophone({
     pitchSamplesRef.current = [];
     referenceNotesRef.current = [];
     performanceRef.current = null;
+    toneSuggestionCheckedRef.current = false;
+    setToneSuggestion(null);
+    setShowManualTone(false);
     setActive(false);
   }
 
@@ -435,14 +468,21 @@ function SingerMicrophone({
 
   useEffect(() => {
     const previousId = previousPlayingIdRef.current;
+    const previousStatus = previousPlayingStatusRef.current;
+    const currentEntry = previousId
+      ? session.queue.find((entry) => entry.id === previousId)
+      : null;
 
-    if (previousId && previousId !== playing?.id) {
-      finishPerformance();
+    if (previousId && previousStatus === 'playing' && currentEntry?.status !== 'playing') {
+      if (currentEntry?.status === 'completed') {
+        finishPerformance();
+      }
       stop();
     }
 
     previousPlayingIdRef.current = playing?.id ?? null;
-  }, [playing?.id]);
+    previousPlayingStatusRef.current = playing?.status ?? null;
+  }, [playing?.id, playing?.status, session.queue]);
 
   useEffect(() => {
     if (!playing || playing.ownerParticipantId !== participantId || !active) {
@@ -601,11 +641,47 @@ function SingerMicrophone({
           const detection = estimatePitch(buffer, analysisContext.sampleRate);
 
           if (detection) {
+            const elapsedSeconds = Math.max(0, (Date.now() - startedAt) / 1000);
+
             pushPitchSample(
               pitchSamplesRef.current,
-              Math.max(0, (Date.now() - startedAt) / 1000),
+              elapsedSeconds,
               detection
             );
+
+            if (
+              !toneSuggestionCheckedRef.current
+              && elapsedSeconds >= 18
+              && elapsedSeconds <= 90
+              && pitchSamplesRef.current.length >= 30
+              && referenceNotesRef.current.length > 0
+            ) {
+              const suggestedShift = suggestTranspositionSemitones(
+                pitchSamplesRef.current,
+                referenceNotesRef.current,
+                {
+                  minimumSamples: 30,
+                  windowStartSeconds: 15,
+                  windowEndSeconds: 90,
+                  minimumAbsoluteShift: 0.8,
+                  maximumShift: 4
+                }
+              );
+
+              toneSuggestionCheckedRef.current = true;
+
+              if (suggestedShift) {
+                const currentKey = pitchClass(playing.selectedKey ?? playing.originalKey);
+                const targetKey = shiftMusicalKey(currentKey, suggestedShift);
+
+                if (targetKey && targetKey !== currentKey) {
+                  setToneSuggestion({
+                    semitones: suggestedShift,
+                    targetKey
+                  });
+                }
+              }
+            }
           }
 
           analysisFrameRef.current = window.requestAnimationFrame(sampleLoop);
@@ -654,26 +730,97 @@ function SingerMicrophone({
 
   if (!playing || playing.ownerParticipantId !== participantId) return null;
 
+  async function applyTone(targetKey: string) {
+    if (!playing || toneBusy) return;
+
+    const previousKey = pitchClass(playing.selectedKey ?? playing.originalKey);
+    if (!previousKey || previousKey === targetKey) return;
+
+    setToneBusy(true);
+    previousToneKeyRef.current = previousKey;
+
+    try {
+      const success = await onChangeKey(playing.id, playing, targetKey, true);
+      if (success) {
+        setToneSuggestion(null);
+        setShowManualTone(false);
+      }
+    } finally {
+      setToneBusy(false);
+    }
+  }
+
   return (
-    <div className="microphone-panel">
-      <div>
-        <span className="eyebrow">🎙️ SEU MICROFONE</span>
-        <strong>{active ? 'Microfone conectado à TV' : 'Sua voz pode ir para o palco'}</strong>
-        {referenceNotesRef.current.length > 0 && <small>A avaliação será calculada ao finalizar a música.</small>}
-        {!supported && <small>Este dispositivo/navegador não oferece WebRTC.</small>}
+    <div className="microphone-stack">
+      <div className="microphone-panel">
+        <div>
+          <span className="eyebrow">🎙️ SEU MICROFONE</span>
+          <strong>{active ? 'Microfone conectado à TV' : 'Sua voz pode ir para o palco'}</strong>
+          {referenceNotesRef.current.length > 0 && <small>A avaliação será calculada ao finalizar a música.</small>}
+          {!supported && <small>Este dispositivo/navegador não oferece WebRTC.</small>}
+        </div>
+
+        {!active ? (
+          <button className="secondary" onClick={start} disabled={!supported}>
+            🎙️ Ativar microfone
+          </button>
+        ) : (
+          <button className="secondary" onClick={stop}>
+            ⏹ Parar microfone
+          </button>
+        )}
+
+        {error && <small className="microphone-error">{error}</small>}
       </div>
 
-      {!active ? (
-        <button className="secondary" onClick={start} disabled={!supported}>
-          🎙️ Ativar microfone
-        </button>
-      ) : (
-        <button className="secondary" onClick={stop}>
-          ⏹ Parar microfone
-        </button>
+      {toneSuggestion && (
+        <div className="tone-suggestion">
+          <div>
+            <span className="eyebrow">🎼 TESTE DE TOM</span>
+            <strong>{semitoneLabel(toneSuggestion.semitones)}</strong>
+            <small>Sua voz está tendendo a ficar fora do tom atual. Quer testar {toneSuggestion.targetKey}?</small>
+          </div>
+
+          <div className="tone-actions">
+            <button className="primary" onClick={() => void applyTone(toneSuggestion.targetKey)} disabled={toneBusy}>
+              {toneBusy ? 'Ajustando…' : `Testar ${toneSuggestion.targetKey}`}
+            </button>
+            <button className="secondary" onClick={() => setToneSuggestion(null)} disabled={toneBusy}>
+              Manter
+            </button>
+            <button className="secondary" onClick={() => {
+              setToneSuggestion(null);
+              setManualTone(pitchClass(playing.selectedKey ?? playing.originalKey));
+              setShowManualTone(true);
+            }} disabled={toneBusy}>
+              Escolher outro
+            </button>
+          </div>
+        </div>
       )}
 
-      {error && <small className="microphone-error">{error}</small>}
+      {showManualTone && playing && (
+        <div className="tone-manual">
+          <label>
+            <span>🎹 Escolha o tom</span>
+            <select
+              value={manualTone}
+              disabled={toneBusy}
+              onChange={(event) => setManualTone(event.target.value)}
+            >
+              {MUSICAL_KEYS.map((key) => <option key={key} value={key}>{key}</option>)}
+            </select>
+          </label>
+          <button className="secondary" disabled={toneBusy || !manualTone} onClick={() => void applyTone(manualTone)}>
+            Aplicar e testar
+          </button>
+          {previousToneKeyRef.current && (
+            <button className="secondary" disabled={toneBusy} onClick={() => void applyTone(previousToneKeyRef.current!)}>
+              ↩ Voltar para {previousToneKeyRef.current}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
