@@ -1485,6 +1485,7 @@ function TvStage({
 
                     <div className="tv-playback">
                   <div className="tv-time">{Math.floor(elapsed / 60)}:{String(Math.floor(elapsed % 60)).padStart(2, '0')}</div>
+                  {playing.playbackState === 'paused' && <span className="tv-paused-badge">⏸ PAUSADO</span>}
                   {!audioEnabled && (
                     <button className="tv-audio-button" onClick={enableAudio}>🔊 Ativar áudio</button>
                   )}
