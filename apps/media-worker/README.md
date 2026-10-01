@@ -36,6 +36,12 @@ Lyrics may be missing when no matching catalog entry is available. The core prep
 - cloud media library;
 - it does not bundle copyrighted media in the repository.
 
+## Browser microphone requirement
+
+The browser microphone path uses `getUserMedia()` and therefore requires a secure context. In the web/PWA build, use HTTPS or a local loopback origin such as `localhost`; ordinary HTTP over a LAN IP is not sufficient for microphone permission in browsers.
+
+The WebRTC transport remains local-first. A STUN server can be supplied with `VITE_WEBRTC_STUN_URL` when sessions need candidate discovery beyond simple local-network connectivity.
+
 ## Legal/usage boundary
 
 Downloads must be limited to media the user is authorized to access and process, and integrations must respect the terms of the source service.
