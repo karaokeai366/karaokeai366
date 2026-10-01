@@ -16,8 +16,6 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: apps/web/package.json
       - run: npm install
       - run: npm run typecheck
       - run: npm run build
@@ -32,7 +30,5 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: apps/signaling/package.json
       - run: npm install
       - run: npm run build
