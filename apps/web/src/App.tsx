@@ -10,7 +10,7 @@ import {
   getLocalSession
 } from './session';
 import { WebSocketTransport } from './wsTransport';
-import { getSongAssetManifest, getSongPreparationStatus, resolveSongAssetUrl, searchSongs, startSongPreparation } from './mediaClient';
+import { getSongAssetManifest, getSongPreparationStatus, resolveSongAssetUrl, searchSongs, startSongPreparation, transposeSongKey } from './mediaClient';
 import type { SongSearchResult } from '../../../packages/media/src/song';
 import { getWebRtcConfiguration, isWebRtcSupported, type WebRtcSignal } from './webrtc';
 import { estimatePitch, pushPitchSample } from './pitchDetector';
@@ -26,6 +26,12 @@ function getSignalingUrl(): string {
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${protocol}//${window.location.hostname}:${SIGNALING_PORT}`;
+}
+
+const MUSICAL_KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+function keyLabel(value?: string): string {
+  return value ? `Tom ${value}` : 'Tom original';
 }
 
 function scoreLabel(score: number): string {
@@ -251,13 +257,15 @@ function QueueList({
   session,
   currentParticipantId,
   onRemove,
-  onPrepare
+  onPrepare,
+  onChangeKey
 }: {
   session: SessionState;
   currentParticipantId: string;
   onRemove: (queueEntryId: string) => void;
   onPrepare: (queueEntryId: string, source: QueueEntry) => void;
-}) {
+  onChangeKey: (queueEntryId: string, entry: QueueEntry, targetKey: string) => void;
+})
   if (session.queue.length === 0) {
     return <div className="empty-queue">A fila está vazia. A primeira música pode ser adicionada pelo celular de quem vai cantar.</div>;
   }
@@ -301,7 +309,29 @@ function QueueList({
                 {entry.preparationMessage && <small>{entry.preparationMessage}</small>}
               </div>
             )}
-            {entry.status === 'ready' && <span className="queue-status ready">✅ Pronta{entry.assetId ? ' · Asset' : ''}</span>}
+            {entry.status === 'ready' && (
+              <div className="queue-ready-controls">
+                <span className="queue-status ready">✅ Pronta</span>
+                {entry.assetId && (
+                  <label className="queue-key-select">
+                    <span>{keyLabel(entry.selectedKey ?? entry.originalKey)}</span>
+                    <select
+                      value={changingKeyId === entry.id ? '' : (entry.selectedKey ?? entry.originalKey ?? '')}
+                      disabled={changingKeyId === entry.id}
+                      onChange={(event) => onChangeKey(entry.id, entry, event.target.value)}
+                    >
+                      <option value="" disabled>Escolher tom</option>
+                      {entry.originalKey && (
+                        <option value={entry.originalKey}>{entry.originalKey} (original)</option>
+                      )}
+                      {MUSICAL_KEYS
+                        .filter((key) => key !== entry.originalKey)
+                        .map((key) => <option key={key} value={key}>{key}</option>)}
+                    </select>
+                  </label>
+                )}
+              </div>
+            )}
             {entry.status === 'completed' && (
               <span className="queue-status ready">
                 ✅ Finalizada{entry.score ? ` · ${entry.score.overall}/100` : ''}
@@ -1092,6 +1122,7 @@ export function App() {
   const [searchPerformed, setSearchPerformed] = useState(false);
   const [roundCount, setRoundCount] = useState('1');
   const [roundOpen, setRoundOpen] = useState(false);
+  const [changingKeyId, setChangingKeyId] = useState<string | null>(null);
   const [webrtcSignals, setWebRtcSignals] = useState<Array<{ id?: string; payload?: { command?: string; data?: WebRtcSignal } }>>([]);
 
 
@@ -1326,7 +1357,9 @@ export function App() {
           ...(status.manifestUrl ? { manifestUrl: status.manifestUrl } : {}),
           preparationStage: status.stage,
           preparationProgress: status.progress,
-          preparationMessage: status.message
+          preparationMessage: status.message,
+          ...(status.manifest?.originalKey ? { originalKey: status.manifest.originalKey } : {}),
+          ...(status.manifest?.selectedKey ? { selectedKey: status.manifest.selectedKey } : {})
         });
 
         if (status.status === 'ready') {
@@ -1350,6 +1383,49 @@ export function App() {
         // Preserve the original media worker error.
       }
       setError(err instanceof Error ? err.message : 'Não foi possível preparar a música.');
+    }
+  }
+
+  async function changeSongKey(queueEntryId: string, entry: QueueEntry, targetKey: string) {
+    if (!session || !transport || !currentParticipantId || !entry.assetId) return;
+    if (entry.status !== 'ready') return;
+    if (entry.selectedKey === targetKey) return;
+
+    try {
+      setChangingKeyId(queueEntryId);
+
+      transport.sendRaw('queue.status.set', session.sessionId, currentParticipantId, {
+        queueEntryId,
+        status: 'preparing',
+        preparationStage: 'key',
+        preparationProgress: 60,
+        preparationMessage: `Transpondo para ${targetKey}…`
+      });
+
+      const prepared = await transposeSongKey(entry.assetId, targetKey);
+
+      transport.sendRaw('queue.status.set', session.sessionId, currentParticipantId, {
+        queueEntryId,
+        status: 'ready',
+        assetId: prepared.assetId,
+        manifestUrl: prepared.manifestUrl,
+        originalKey: prepared.originalKey ?? entry.originalKey,
+        selectedKey: prepared.selectedKey ?? targetKey,
+        preparationStage: 'ready',
+        preparationProgress: 100,
+        preparationMessage: `Tom alterado para ${prepared.selectedKey ?? targetKey}.`
+      });
+    } catch (err) {
+      transport.sendRaw('queue.status.set', session.sessionId, currentParticipantId, {
+        queueEntryId,
+        status: 'ready',
+        preparationStage: 'ready',
+        preparationProgress: 100,
+        preparationMessage: 'A música permaneceu no tom anterior.'
+      });
+      setError(err instanceof Error ? err.message : 'Não foi possível alterar o tom.');
+    } finally {
+      setChangingKeyId(null);
     }
   }
 
@@ -1509,7 +1585,7 @@ export function App() {
                 </div>
               </div>
             )}
-            <QueueList session={session} currentParticipantId={currentParticipantId} onRemove={removeQueueEntry} onPrepare={prepareQueueEntry} />
+            <QueueList session={session} currentParticipantId={currentParticipantId} onRemove={removeQueueEntry} onPrepare={prepareQueueEntry} onChangeKey={changeSongKey} />
           </div>
           <div className="panel">
             <div className="panel-heading"><div><span className="eyebrow">PARTICIPANTES</span><h3>Quem está na sessão</h3></div><span className="tag">PARTICIPANTE</span></div>
@@ -1606,7 +1682,7 @@ export function App() {
                 <button className="primary" onClick={addSongToQueue}>Adicionar</button>
               </div>
             </details>
-            <QueueList session={session!} currentParticipantId={currentParticipantId} onRemove={removeQueueEntry} onPrepare={prepareQueueEntry} />
+            <QueueList session={session!} currentParticipantId={currentParticipantId} onRemove={removeQueueEntry} onPrepare={prepareQueueEntry} onChangeKey={changeSongKey} />
           </div>
 
 
