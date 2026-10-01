@@ -306,18 +306,10 @@ function playbackElapsedSeconds(entry: QueueEntry | null | undefined): number {
   if (entry.playbackState === 'paused') {
     return Math.max(0, Number(entry.playbackPositionSeconds ?? 0));
   }
-  if (Number.isFinite(entry.playbackPositionSeconds) && !entry.playbackStartedAt) {
-    return Math.max(0, Number(entry.playbackPositionSeconds));
-  }
   if (Number.isFinite(entry.playbackStartedAt)) {
-    return Math.max(
-      0,
-      Number(entry.playbackPositionSeconds ?? 0)
-        + (Date.now() - Number(entry.playbackStartedAt)) / 1000
-        - (Number(entry.playbackPositionSeconds ?? 0) > 0 ? Number(entry.playbackPositionSeconds) : 0)
-    );
+    return Math.max(0, (Date.now() - Number(entry.playbackStartedAt)) / 1000);
   }
-  return 0;
+  return Math.max(0, Number(entry.playbackPositionSeconds ?? 0));
 }
 
 function dispatchWebRtcSignal(
@@ -1274,28 +1266,29 @@ function TvStage({
 
   useEffect(() => {
     const update = () => {
-      if (!playing?.playbackStartedAt) {
-        setElapsed(0);
-        return;
-      }
-      setElapsed(Math.max(0, (Date.now() - playing.playbackStartedAt) / 1000));
+      setElapsed(playbackElapsedSeconds(playing));
     };
 
     update();
     const timer = window.setInterval(update, 250);
     return () => window.clearInterval(timer);
-  }, [playing?.id, playing?.playbackStartedAt]);
+  }, [playing?.id, playing?.playbackStartedAt, playing?.playbackState, playing?.playbackPositionSeconds]);
 
   useEffect(() => {
-    if (!transport || !playing || !playing.durationSeconds || !playing.playbackStartedAt) {
+    if (
+      !transport
+      || !playing
+      || !playing.durationSeconds
+      || !playing.playbackStartedAt
+      || playing.playbackState === 'paused'
+    ) {
       return;
     }
 
     const update = () => {
       if (autoFinishSentRef.current === playing.id) return;
 
-      const elapsedSeconds =
-        Math.max(0, (Date.now() - playing.playbackStartedAt!) / 1000);
+      const elapsedSeconds = playbackElapsedSeconds(playing);
 
       if (elapsedSeconds + 0.5 >= playing.durationSeconds!) {
         autoFinishSentRef.current = playing.id;
@@ -1312,7 +1305,7 @@ function TvStage({
     update();
     const timer = window.setInterval(update, 250);
     return () => window.clearInterval(timer);
-  }, [playing?.id, playing?.durationSeconds, playing?.playbackStartedAt, transport, session.sessionId, participantId]);
+  }, [playing?.id, playing?.durationSeconds, playing?.playbackStartedAt, playing?.playbackState, playing?.playbackPositionSeconds, transport, session.sessionId, participantId]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -1338,6 +1331,28 @@ function TvStage({
       audio.load();
     };
   }, [manifest, playing?.id]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    const remoteAudio = remoteAudioRef.current;
+
+    if (!playing || playing.playbackState !== 'paused') {
+      if (playing && audioEnabled && audio?.src) {
+        audio.currentTime = elapsed;
+        audio.play().catch(() => {
+          setAudioError('Não foi possível retomar o áudio automaticamente.');
+        });
+      }
+      if (playing && audioEnabled && remoteAudio?.srcObject) {
+        remoteAudio.play().catch(() => undefined);
+      }
+      return;
+    }
+
+    audio?.pause();
+    remoteAudio?.pause();
+    if (audio) audio.currentTime = elapsed;
+  }, [playing?.id, playing?.playbackState, audioEnabled]); 
 
   useEffect(() => {
     const audio = audioRef.current;
