@@ -124,6 +124,10 @@ button { border: 0; border-radius: 14px; min-height: 48px; padding: 0 18px; colo
 .result-actions { display: flex; align-items: center; gap: 8px; }
 .result-source { color: #8e97b4; text-decoration: none; font-size: 11px; white-space: nowrap; }
 .result-source:hover { color: #cfd4ea; text-decoration: underline; }
+.search-empty { display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 14px; border: 1px dashed #303753; border-radius: 14px; background: #0c1120; color: #8b94af; }
+.search-empty > span { font-size: 22px; }
+.search-empty strong { display: block; color: #c4c9dd; font-size: 13px; }
+.search-empty small { display: block; margin-top: 4px; line-height: 1.4; }
 .queue-list { display: grid; gap: 4px; margin-top: 18px; }
 .queue-row { display: grid; grid-template-columns: 28px 34px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 10px 6px; border-top: 1px solid #20263e; }
 .queue-row:first-child { border-top: 0; }
