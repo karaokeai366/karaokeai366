@@ -340,3 +340,5 @@ button { border: 0; border-radius: 14px; min-height: 48px; padding: 0 18px; colo
   .stage-control-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .stage-control-actions button { width: 100%; }
 }
+
+.tv-paused-badge { display: inline-flex; align-items: center; gap: 5px; margin-left: 10px; padding: 6px 10px; border-radius: 999px; border: 1px solid #6b5a2f; background: #2a2415; color: #f0d27a; font-size: 10px; font-weight: 900; letter-spacing: .08em; }
