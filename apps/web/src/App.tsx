@@ -457,6 +457,8 @@ function SingerMicrophone({
   const toneSuggestionCheckedRef = useRef(false);
   const previousToneKeyRef = useRef<string | null>(null);
   const toneWindowRef = useRef<{ start: number; end: number }>({ start: 15, end: 90 });
+  const performanceStartRef = useRef<number | null>(null);
+  const previousPlaybackStartedAtRef = useRef<number | null>(null);
 
   const [active, setActive] = useState(false);
   const [error, setError] = useState('');
@@ -481,6 +483,7 @@ function SingerMicrophone({
 
     analysisContextRef.current?.close().catch(() => undefined);
     analysisContextRef.current = null;
+    performanceStartRef.current = null;
 
     pitchSamplesRef.current = [];
     referenceNotesRef.current = [];
@@ -537,6 +540,33 @@ function SingerMicrophone({
     previousPlayingIdRef.current = playing?.id ?? null;
     previousPlayingStatusRef.current = playing?.status ?? null;
   }, [playing?.id, playing?.status, session.queue]);
+
+  useEffect(() => {
+    const startedAt = playing?.playbackStartedAt ?? null;
+    const previousStartedAt = previousPlaybackStartedAtRef.current;
+
+    if (
+      playing
+      && playing.ownerParticipantId === participantId
+      && startedAt
+      && previousStartedAt
+      && startedAt !== previousStartedAt
+    ) {
+      pitchSamplesRef.current = [];
+      performanceRef.current = {
+        queueEntryId: playing.id,
+        performanceId: playing.id + '-' + startedAt
+      };
+      performanceStartRef.current = startedAt;
+      toneSuggestionCheckedRef.current = false;
+      toneWindowRef.current = { start: 15, end: 90 };
+      setToneSuggestion(null);
+      setAppliedTone(null);
+      setError('');
+    }
+
+    previousPlaybackStartedAtRef.current = startedAt;
+  }, [playing?.id, playing?.playbackStartedAt, playing?.ownerParticipantId, participantId]);
 
   useEffect(() => {
     if (!playing || playing.ownerParticipantId !== participantId || !active) {
@@ -679,6 +709,8 @@ function SingerMicrophone({
       referenceNotesRef.current = referenceNotes;
 
       const startedAt = playing.playbackStartedAt ?? Date.now();
+      performanceStartRef.current = startedAt;
+      previousPlaybackStartedAtRef.current = startedAt;
       performanceRef.current = {
         queueEntryId: playing.id,
         performanceId: playing.id + '-' + startedAt
@@ -809,6 +841,25 @@ function SingerMicrophone({
 
   if (!playing || playing.ownerParticipantId !== participantId) return null;
 
+  const remainingRestartCredits = session.restartCreditsByParticipant?.[participantId] ?? 0;
+  const restartProgress = playing?.playbackStartedAt && playing.durationSeconds
+    ? Math.min(100, Math.max(0, ((Date.now() - playing.playbackStartedAt) / 1000 / playing.durationSeconds) * 100))
+    : 0;
+  const restartAvailable = Boolean(
+    playing
+    && playing.durationSeconds
+    && canRestart(restartProgress, remainingRestartCredits)
+  );
+
+  function restartSong() {
+    if (!transport || !playing || !playing.durationSeconds || !performanceRef.current) return;
+    transport.sendRaw('queue.restart', session.sessionId, participantId, {
+      queueEntryId: playing.id,
+      performanceId: performanceRef.current.performanceId,
+      progressPercent: Math.round(restartProgress)
+    });
+  }
+
   async function applyTone(targetKey: string) {
     if (!playing || toneBusy) return;
 
@@ -843,6 +894,7 @@ function SingerMicrophone({
             <small>Tom atual: <strong>{pitchClass(playing.selectedKey ?? playing.originalKey)}</strong></small>
           )}
           {referenceNotesRef.current.length > 0 && <small>A avaliação será calculada ao finalizar a música.</small>}
+          {playing?.durationSeconds && <small>{restartAvailable ? `Recomeços restantes: ${remainingRestartCredits} · disponível até 50%` : remainingRestartCredits > 0 ? 'Limite de recomeço: até 50% da música' : 'Sem recomeços restantes nesta rodada'}</small>}
           {!supported && <small>Este dispositivo/navegador não oferece WebRTC.</small>}
         </div>
 
@@ -866,6 +918,11 @@ function SingerMicrophone({
           >
             🎼 Ajustar tom
           </button>
+          {restartAvailable && (
+            <button className="secondary restart-button" onClick={restartSong} disabled={toneBusy}>
+              ↻ Recomeçar · {remainingRestartCredits}
+            </button>
+          )}
         </div>
 
         {error && <small className="microphone-error">{error}</small>}
@@ -1575,7 +1632,8 @@ export function App() {
         sourceId: result.sourceId,
         source: result.source,
         sourceUrl: result.sourceUrl,
-        thumbnailUrl: result.thumbnailUrl
+        thumbnailUrl: result.thumbnailUrl,
+        durationSeconds: result.durationSeconds
       });
       setSearchResults((items) => items.filter((item) => item.sourceId !== result.sourceId));
     } catch (err) {
