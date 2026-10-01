@@ -2124,10 +2124,30 @@ export function App() {
               </button>
             </div>
             {!roundOpen && (
-              <div className="round-count">
-                <input type="number" min="1" max="100" value={roundCount} onChange={(e) => setRoundCount(e.target.value)} />
-                <span>músicas</span>
-              </div>
+              <>
+                <div className="round-presets">
+                  {[1, 3, 5, 10].map((count) => (
+                    <button
+                      key={count}
+                      type="button"
+                      className={`round-preset ${Number(roundCount) === count ? 'selected' : ''}`}
+                      onClick={() => setRoundCount(String(count))}
+                    >
+                      {count}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className={`round-preset ${[1, 3, 5, 10].includes(Number(roundCount)) ? '' : 'selected'}`}
+                  >
+                    Personalizada
+                  </button>
+                </div>
+                <div className="round-count">
+                  <input type="number" min="1" max="100" value={roundCount} onChange={(e) => setRoundCount(e.target.value)} />
+                  <span>músicas</span>
+                </div>
+              </>
             )}
             <button className="primary full" onClick={configureRound}>Salvar rodada</button>
             <p className="muted small-note">A rodada atual é {session?.roundMode.kind === 'open' ? 'aberta, até o anfitrião encerrar' : `de ${session?.roundMode.songCount} música(s)`}. O cálculo de recomeços usa essa configuração.</p>
