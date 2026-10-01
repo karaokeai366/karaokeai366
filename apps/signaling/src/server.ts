@@ -105,6 +105,12 @@ function calculateRestartCredits(songCount: number | 'open'): number {
   return Math.max(1, Math.floor(count * 0.3));
 }
 
+function ensureRoundState(state: any): void {
+  state.roundId ??= randomUUID();
+  state.roundResultsByParticipant ??= {};
+}
+
+
 const wss = new WebSocketServer({ port });
 
 wss.on('connection', (socket) => {
@@ -137,6 +143,7 @@ wss.on('connection', (socket) => {
 
         const initialState = message.payload?.state ?? null;
         if (initialState) {
+          ensureRoundState(initialState);
           initialState.restartCreditsByParticipant = {
             [message.senderId]: calculateRestartCredits(
               initialState.roundMode?.kind === 'open'
@@ -203,6 +210,7 @@ wss.on('connection', (socket) => {
 
         const currentState = session.state as any;
         if (currentState && Array.isArray(currentState.participants)) {
+          ensureRoundState(currentState);
           currentState.restartCreditsByParticipant ??= {};
 
           if (client.role !== 'tv') {
@@ -313,6 +321,7 @@ wss.on('connection', (socket) => {
 
           return {
             ...item,
+            ...(nextStatus === 'playing' ? { roundId: currentState.roundId } : {}),
             status: nextStatus,
             ...(nextStatus === 'playing' ? { playbackStartedAt: startAt } : {}),
             attempts: attemptState.attempts,
@@ -532,6 +541,39 @@ wss.on('connection', (socket) => {
           };
         });
 
+        ensureRoundState(currentState);
+        const officialScores = queue
+          .filter((item: any) =>
+            item.ownerParticipantId === entry.ownerParticipantId
+            && item.roundId === (entry.roundId ?? currentState.roundId)
+            && item.status === 'completed'
+            && item.score
+          )
+          .map((item: any) => ({
+            queueEntryId: item.id,
+            score: Number(item.score.overall)
+          }));
+
+        const requiredSongs = currentState.roundMode?.kind === 'songs'
+          ? Number(currentState.roundMode.songCount)
+          : undefined;
+        const average = officialScores.length > 0
+          ? Math.round(
+              officialScores.reduce((sum: number, item: any) => sum + item.score, 0)
+              / officialScores.length
+            )
+          : undefined;
+
+        currentState.roundResultsByParticipant[entry.ownerParticipantId] = {
+          roundId: entry.roundId ?? currentState.roundId,
+          completedSongs: officialScores.length,
+          ...(requiredSongs ? { requiredSongs } : {}),
+          ...(average !== undefined ? { score: average } : {}),
+          finished: requiredSongs ? officialScores.length >= requiredSongs : false,
+          updatedAt: Date.now(),
+          songScores: officialScores
+        };
+
         session.state = currentState;
         broadcast(session, 'session.state', { state: session.state });
         break;
@@ -575,6 +617,8 @@ wss.on('connection', (socket) => {
           ? { kind: 'open' }
           : { kind: 'songs', songCount: Math.floor(mode.songCount) };
 
+        currentState.roundId = randomUUID();
+        currentState.roundResultsByParticipant = {};
         currentState.restartCreditsByParticipant = {};
         for (const participant of currentState.participants ?? []) {
           if (participant.role !== 'tv') {
@@ -629,6 +673,7 @@ wss.on('connection', (socket) => {
           durationSeconds: Number.isFinite(message.payload?.durationSeconds)
             ? Math.max(0, Math.min(3600, Number(message.payload.durationSeconds)))
             : undefined,
+          roundId: currentState.roundId,
           addedAt: Date.now(),
           status: 'queued'
         };
