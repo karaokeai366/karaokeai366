@@ -88,3 +88,17 @@ export async function getSongPreparationStatus(jobId: string): Promise<MediaPrep
 
   return status;
 }
+
+
+export async function getSongAssetManifest(manifestUrl: string): Promise<SongAssetManifest> {
+  const response = await fetch(manifestUrl);
+  if (!response.ok) {
+    throw new Error(`Não foi possível carregar o SongAsset (${response.status}).`);
+  }
+  return response.json() as Promise<SongAssetManifest>;
+}
+
+export function resolveSongAssetUrl(manifestUrl: string, assetPath?: string): string | null {
+  if (!assetPath) return null;
+  return new URL(assetPath, manifestUrl).toString();
+}
