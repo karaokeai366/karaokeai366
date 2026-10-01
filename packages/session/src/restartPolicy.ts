@@ -13,3 +13,8 @@ export function calculateRestartCredits(songCount: number): number {
 export function canRestart(progressPercent: number, remainingCredits: number): boolean {
   return progressPercent >= 0 && progressPercent <= 50 && remainingCredits > 0;
 }
+
+export function restartCreditsForRound(songCount: number | 'open'): number {
+  if (songCount === 'open') return 1;
+  return calculateRestartCredits(songCount);
+}
