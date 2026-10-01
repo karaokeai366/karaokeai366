@@ -2775,6 +2775,26 @@ export function App() {
               )}
             </div>
           </div>
+          {session.hostParticipantId !== currentParticipantId
+            && session.participants.find((participant) => participant.id === session.hostParticipantId)?.online === false
+            && currentParticipant?.role === 'participant' && (
+              <div className="panel host-recovery-panel">
+                <div>
+                  <span className="eyebrow">⚠️ HOST OFFLINE</span>
+                  <h3>O anfitrião perdeu a conexão</h3>
+                  <p className="muted small-note">
+                    A sessão foi preservada. Você pode assumir o controle do palco enquanto o Host estiver offline.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={() => transport?.sendRaw('host.claim', session.sessionId, currentParticipantId, {})}
+                >
+                  Assumir Host
+                </button>
+              </div>
+            )}
           <RoundProgress session={session} participantId={currentParticipantId} />
           <SingerNextUp
             session={session}
