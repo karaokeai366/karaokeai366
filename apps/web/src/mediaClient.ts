@@ -10,6 +10,7 @@ interface WorkerSongSearchResult {
   title: string;
   artist?: string | null;
   album?: string | null;
+  channel_name?: string | null;
   duration_seconds?: number | null;
   thumbnail_url?: string | null;
   source_url: string;
@@ -38,6 +39,7 @@ export async function searchSongs(query: string): Promise<SongSearchResult[]> {
     title: result.title,
     artist: result.artist ?? undefined,
     album: result.album ?? undefined,
+    channelName: result.channel_name ?? undefined,
     durationSeconds: result.duration_seconds ?? undefined,
     thumbnailUrl: result.thumbnail_url ?? undefined,
     sourceUrl: result.source_url
