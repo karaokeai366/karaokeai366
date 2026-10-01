@@ -401,6 +401,7 @@ function SingerMicrophone({
 
     if (previousId && previousId !== playing?.id) {
       finishPerformance();
+      stop();
     }
 
     previousPlayingIdRef.current = playing?.id ?? null;
