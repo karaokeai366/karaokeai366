@@ -14,7 +14,8 @@ import { getSongAssetManifest, getSongPreparationStatus, resolveSongAssetUrl, se
 import type { SongSearchResult } from '../../../packages/media/src/song';
 import { getWebRtcConfiguration, isWebRtcSupported, type WebRtcSignal } from './webrtc';
 import { estimatePitch, pushPitchSample } from './pitchDetector';
-import { canRestart, scorePerformance, suggestTranspositionSemitones, type MelodyReferenceNote, type PerformanceScore, type PitchSample } from '../../../packages/session/src/scoring';
+import { scorePerformance, suggestTranspositionSemitones, type MelodyReferenceNote, type PerformanceScore, type PitchSample } from '../../../packages/session/src/scoring';
+import { canRestart } from '../../../packages/session/src/restartPolicy';
 
 type View = 'home' | 'host' | 'join' | 'participant' | 'tv';
 
