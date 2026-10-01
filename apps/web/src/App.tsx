@@ -1698,6 +1698,7 @@ export function App() {
           preparationStage: status.stage,
           preparationProgress: status.progress,
           preparationMessage: status.message,
+          ...(status.manifest?.durationSeconds ? { durationSeconds: status.manifest.durationSeconds } : {}),
           ...(status.manifest?.originalKey ? { originalKey: status.manifest.originalKey } : {}),
           ...(status.manifest?.selectedKey ? { selectedKey: status.manifest.selectedKey } : {})
         });
