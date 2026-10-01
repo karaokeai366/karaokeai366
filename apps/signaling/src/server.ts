@@ -127,6 +127,29 @@ wss.on('connection', (socket) => {
         session.clients.set(client.participantId, client);
         clientsBySocket.set(socket, client);
 
+        const currentState = session.state as any;
+        if (currentState && Array.isArray(currentState.participants)) {
+          currentState.participants = [
+            ...currentState.participants,
+            {
+              id: client.participantId,
+              name: String(message.payload?.name ?? 'Participante').slice(0, 30),
+              role: 'participant',
+              joinedAt: Date.now(),
+              capabilities: message.payload?.capabilities ?? {
+                logicalCores: undefined,
+                memoryGb: undefined,
+                batteryPercent: undefined,
+                networkScore: 0,
+                thermalScore: 0,
+                measuredScore: 0
+              },
+              online: true
+            }
+          ];
+          session.state = currentState;
+        }
+
         send(socket, 'session.joined', {
           sessionId: session.sessionId,
           hostParticipantId: session.hostParticipantId,
@@ -135,8 +158,11 @@ wss.on('connection', (socket) => {
 
         broadcast(session, 'participant.joined', {
           participantId: client.participantId,
-          participantCount: session.clients.size
+          participantCount: session.clients.size,
+          participant: currentState?.participants?.find((p: any) => p.id === client.participantId) ?? null
         }, socket);
+
+        broadcast(session, 'session.state', { state: session.state });
         break;
       }
 
@@ -215,6 +241,15 @@ wss.on('connection', (socket) => {
     if (session.clients.size === 0) {
       sessions.delete(session.sessionId);
       return;
+    }
+
+    const currentState = session.state as any;
+    if (currentState && Array.isArray(currentState.participants)) {
+      currentState.participants = currentState.participants.filter(
+        (participant: any) => participant.id !== client.participantId
+      );
+      session.state = currentState;
+      broadcast(session, 'session.state', { state: session.state });
     }
 
     broadcast(session, 'participant.left', {
