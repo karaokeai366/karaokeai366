@@ -365,6 +365,7 @@ wss.on('connection', (socket) => {
         const currentState = session.state as any;
         const queue = Array.isArray(currentState?.queue) ? currentState.queue : [];
         const queueEntryId = String(message.payload?.queueEntryId ?? '');
+        const performanceId = String(message.payload?.performanceId ?? '').trim().slice(0, 160);
         const entry = queue.find((item: any) => item.id === queueEntryId);
 
         if (!entry) {
@@ -379,6 +380,11 @@ wss.on('connection', (socket) => {
 
         if (entry.status !== 'playing') {
           reject(socket, 'Só é possível recomeçar uma música em execução.');
+          return;
+        }
+
+        if (!performanceId || !entry.activePerformanceId || performanceId !== entry.activePerformanceId) {
+          reject(socket, 'Esta tentativa não é mais a tentativa ativa.');
           return;
         }
 
