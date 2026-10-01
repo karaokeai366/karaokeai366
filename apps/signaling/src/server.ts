@@ -290,8 +290,12 @@ wss.on('connection', (socket) => {
         }
 
         const isHost = client.participantId === session.hostParticipantId;
-        if (!isHost && entry.ownerParticipantId !== client.participantId) {
-          reject(socket, 'Somente o dono da música ou o Host pode alterar o status.');
+        const ownerCanPrepare = entry.ownerParticipantId === client.participantId
+          && nextStatus !== 'playing'
+          && nextStatus !== 'completed';
+
+        if (!isHost && !ownerCanPrepare) {
+          reject(socket, 'Somente o Host pode iniciar/finalizar a apresentação; o cantor pode preparar a própria música.');
           return;
         }
 
