@@ -50,3 +50,14 @@ Only the completed official attempt contributes to the score.
 The round stores individual sealed song scores and computes a final score only when the host-defined song count is satisfied.
 
 The exact aggregation algorithm should remain configurable.
+
+
+## Automatic key test
+
+During the early part of a performance, the singer's local pitch samples may be analyzed for a sustained semitone offset against the current reference.
+
+If the signal is consistent enough, KaraokeAI can suggest a nearby key. The suggestion is advisory and requires explicit singer confirmation.
+
+Accepting the suggestion starts a new test in the selected key and does not consume a restart credit. Rejecting it keeps the current key. The singer can also choose another key manually or return to the immediately previous key.
+
+The first attempt is not scored when a key test is accepted. Only the final completed presentation in the selected key becomes eligible for the official score.
