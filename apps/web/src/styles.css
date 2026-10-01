@@ -299,3 +299,8 @@ button { border: 0; border-radius: 14px; min-height: 48px; padding: 0 18px; colo
 .round-song-scores { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
 .round-song-scores span { padding: 5px 8px; border: 1px solid #252e48; border-radius: 999px; color: #78829e; background: #0d1220; font-size: 10px; }
 .round-song-scores strong { color: #c4cbe2; }
+
+.round-presets { display: flex; flex-wrap: wrap; gap: 7px; margin: 12px 0 8px; }
+.round-preset { min-width: 48px; min-height: 36px; padding: 0 10px; border: 1px solid #29314d; border-radius: 10px; background: #10162a; color: #8992ad; font-size: 11px; font-weight: 800; }
+.round-preset:hover { border-color: #3d4770; color: #c7cde0; }
+.round-preset.selected { border-color: #6672ee; background: #1a2140; color: #e3e6ff; }
