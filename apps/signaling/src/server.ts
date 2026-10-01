@@ -212,6 +212,15 @@ wss.on('connection', (socket) => {
                   : {}),
                 ...(message.payload?.manifestUrl
                   ? { manifestUrl: String(message.payload.manifestUrl).slice(0, 2000) }
+                  : {}),
+                ...(message.payload?.preparationStage
+                  ? { preparationStage: String(message.payload.preparationStage).slice(0, 40) }
+                  : {}),
+                ...(Number.isFinite(message.payload?.preparationProgress)
+                  ? { preparationProgress: Math.max(0, Math.min(100, Number(message.payload.preparationProgress))) }
+                  : {}),
+                ...(message.payload?.preparationMessage
+                  ? { preparationMessage: String(message.payload.preparationMessage).slice(0, 200) }
                   : {})
               }
             : item
