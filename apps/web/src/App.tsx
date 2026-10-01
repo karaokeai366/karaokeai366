@@ -12,6 +12,7 @@ import {
 import { WebSocketTransport } from './wsTransport';
 import { getSongAssetManifest, getSongPreparationStatus, resolveSongAssetUrl, searchSongs, startSongPreparation } from './mediaClient';
 import type { SongSearchResult } from '../../../packages/media/src/song';
+import { getWebRtcConfiguration, isWebRtcSupported, type WebRtcSignal } from './webrtc';
 
 type View = 'home' | 'host' | 'join' | 'participant' | 'tv';
 
@@ -217,6 +218,18 @@ function SearchResults({
   );
 }
 
+function dispatchWebRtcSignal(
+  transport: WebSocketTransport,
+  session: SessionState,
+  fromParticipantId: string,
+  signal: WebRtcSignal
+): void {
+  transport.sendRaw('session.command', session.sessionId, fromParticipantId, {
+    command: `webrtc.${signal.kind}`,
+    data: signal
+  });
+}
+
 function preparationStageLabel(stage?: string): string {
   switch (stage) {
     case 'download': return 'Baixando';
@@ -300,7 +313,158 @@ function QueueList({
   );
 }
 
-function TvStage({ session }: { session: SessionState }) {
+function SingerMicrophone({
+  session,
+  participantId,
+  transport,
+  signals
+}: {
+  session: SessionState;
+  participantId: string;
+  transport: WebSocketTransport | null;
+  signals: Array<{ id?: string; payload?: { command?: string; data?: WebRtcSignal } }>;
+}) {
+  const playing = session.queue.find((entry) => entry.status === 'playing') ?? null;
+  const tv = session.participants.find((participant) => participant.role === 'tv');
+  const peerRef = useRef<RTCPeerConnection | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const handledSignalsRef = useRef(new Set<string>());
+  const [active, setActive] = useState(false);
+  const [error, setError] = useState('');
+  const [supported, setSupported] = useState(true);
+
+  const stop = () => {
+    peerRef.current?.close();
+    peerRef.current = null;
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    setActive(false);
+  };
+
+  useEffect(() => {
+    setSupported(isWebRtcSupported());
+    return stop;
+  }, []);
+
+  useEffect(() => {
+    if (!playing || playing.ownerParticipantId !== participantId || !active) {
+      stop();
+      return;
+    }
+
+    const answerSignal = signals.find((message) =>
+      message.id
+      && !handledSignalsRef.current.has(message.id)
+      && message.payload?.command === 'webrtc.answer'
+      && message.payload.data?.targetParticipantId === participantId
+      && message.payload.data.fromParticipantId === tv?.id
+    );
+
+    if (!answerSignal) return;
+
+    const answer = answerSignal.payload?.data?.sdp;
+    if (!answer || !peerRef.current) return;
+
+    handledSignalsRef.current.add(answerSignal.id!);
+    peerRef.current.setRemoteDescription(answer).catch(() => {
+      setError('Não foi possível negociar o áudio com a TV.');
+    });
+  }, [signals, playing, participantId, active, tv?.id]);
+
+  async function start() {
+    if (!transport || !playing || playing.ownerParticipantId !== participantId || !tv) {
+      setError('Não há uma TV conectada a esta sessão.');
+      return;
+    }
+
+    if (!isWebRtcSupported()) {
+      setSupported(false);
+      setError('Este navegador não oferece microfone/WebRTC.');
+      return;
+    }
+
+    try {
+      setError('');
+      stop();
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1
+        },
+        video: false
+      });
+      streamRef.current = stream;
+
+      const peer = new RTCPeerConnection(getWebRtcConfiguration());
+      peerRef.current = peer;
+
+      stream.getTracks().forEach((track) => peer.addTrack(track, stream));
+
+      peer.onicecandidate = (event) => {
+        if (!event.candidate || !transport) return;
+        dispatchWebRtcSignal(transport, session, participantId, {
+          kind: 'ice-candidate',
+          fromParticipantId: participantId,
+          targetParticipantId: tv.id,
+          candidate: event.candidate.toJSON()
+        });
+      };
+
+      peer.onconnectionstatechange = () => {
+        if (peer.connectionState === 'connected') setActive(true);
+        if (['failed', 'disconnected', 'closed'].includes(peer.connectionState)) setActive(false);
+      };
+
+      const offer = await peer.createOffer();
+      await peer.setLocalDescription(offer);
+
+      dispatchWebRtcSignal(transport, session, participantId, {
+        kind: 'offer',
+        fromParticipantId: participantId,
+        targetParticipantId: tv.id,
+        sdp: peer.localDescription?.toJSON() ?? offer
+      });
+
+      setActive(true);
+    } catch (err) {
+      stop();
+      setError(err instanceof Error ? err.message : 'Não foi possível ativar o microfone.');
+    }
+  }
+
+  if (!playing || playing.ownerParticipantId !== participantId) return null;
+
+  return (
+    <div className="microphone-panel">
+      <div>
+        <span className="eyebrow">🎙️ SEU MICROFONE</span>
+        <strong>{active ? 'Microfone conectado à TV' : 'Sua voz pode ir para o palco'}</strong>
+        {!supported && <small>Este dispositivo/navegador não oferece WebRTC.</small>}
+      </div>
+      {!active ? (
+        <button className="secondary" onClick={start} disabled={!supported}>🎙️ Ativar microfone</button>
+      ) : (
+        <button className="secondary" onClick={stop}>⏹ Parar microfone</button>
+      )}
+      {error && <small className="microphone-error">{error}</small>}
+    </div>
+  );
+}
+
+function TvStage({
+  session,
+  participantId,
+  transport,
+  signals
+}: {
+  session: SessionState;
+  participantId: string;
+  transport: WebSocketTransport | null;
+  signals: Array<{ id?: string; payload?: { command?: string; data?: WebRtcSignal } }>;
+}) {
   const playing = session.queue.find((entry) => entry.status === 'playing') ?? null;
   const upcoming = session.queue.filter(
     (entry) => entry.status === 'ready' || entry.status === 'playing' || entry.status === 'preparing'
@@ -315,6 +479,118 @@ function TvStage({ session }: { session: SessionState }) {
   const [elapsed, setElapsed] = useState(0);
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [audioError, setAudioError] = useState('');
+  const [microphoneConnected, setMicrophoneConnected] = useState(false);
+  const peerRef = useRef<RTCPeerConnection | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
+  const handledSignalsRef = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (!transport) return;
+
+    const offerMessage = signals.find((message) =>
+      message.id
+      && !handledSignalsRef.current.has(message.id)
+      && message.payload?.command === 'webrtc.offer'
+      && message.payload.data?.targetParticipantId === participantId
+    );
+
+    if (!offerMessage?.id || !offerMessage.payload?.data?.sdp) return;
+
+    handledSignalsRef.current.add(offerMessage.id);
+
+    const signal = offerMessage.payload.data;
+    const singerId = signal.fromParticipantId;
+
+    const setup = async () => {
+      try {
+        peerRef.current?.close();
+        const peer = new RTCPeerConnection(getWebRtcConfiguration());
+        peerRef.current = peer;
+        pendingIceRef.current = [];
+
+        peer.ontrack = (event) => {
+          const stream = event.streams[0] ?? new MediaStream([event.track]);
+          if (remoteAudioRef.current) {
+            remoteAudioRef.current.srcObject = stream;
+            if (audioEnabled) {
+              remoteAudioRef.current.play().catch(() => {
+                setAudioError('Toque em “Ativar áudio” para liberar a voz do cantor.');
+              });
+            }
+          }
+          setMicrophoneConnected(true);
+        };
+
+        peer.onicecandidate = (event) => {
+          if (!event.candidate || !transport) return;
+          dispatchWebRtcSignal(transport, session, participantId, {
+            kind: 'ice-candidate',
+            fromParticipantId: participantId,
+            targetParticipantId: singerId,
+            candidate: event.candidate.toJSON()
+          });
+        };
+
+        peer.onconnectionstatechange = () => {
+          if (['failed', 'disconnected', 'closed'].includes(peer.connectionState)) {
+            setMicrophoneConnected(false);
+          }
+        };
+
+        await peer.setRemoteDescription(signal.sdp!);
+        for (const candidate of pendingIceRef.current) {
+          await peer.addIceCandidate(candidate);
+        }
+        pendingIceRef.current = [];
+
+        const answer = await peer.createAnswer();
+        await peer.setLocalDescription(answer);
+
+        dispatchWebRtcSignal(transport, session, participantId, {
+          kind: 'answer',
+          fromParticipantId: participantId,
+          targetParticipantId: singerId,
+          sdp: peer.localDescription?.toJSON() ?? answer
+        });
+      } catch {
+        setMicrophoneConnected(false);
+        setAudioError('Não foi possível conectar o microfone do cantor.');
+      }
+    };
+
+    void setup();
+  }, [signals, participantId, transport, session, audioEnabled]);
+
+  useEffect(() => {
+    const iceMessage = signals.find((message) =>
+      message.id
+      && !handledSignalsRef.current.has(message.id)
+      && message.payload?.command === 'webrtc.ice-candidate'
+      && message.payload.data?.targetParticipantId === participantId
+    );
+
+    if (!iceMessage?.id || !iceMessage.payload?.data?.candidate) return;
+    handledSignalsRef.current.add(iceMessage.id);
+
+    const candidate = iceMessage.payload.data.candidate;
+    if (peerRef.current?.remoteDescription) {
+      peerRef.current.addIceCandidate(candidate).catch(() => {
+        pendingIceRef.current.push(candidate);
+      });
+    } else {
+      pendingIceRef.current.push(candidate);
+    }
+  }, [signals, participantId]);
+
+  useEffect(() => {
+    if (!playing) {
+      peerRef.current?.close();
+      peerRef.current = null;
+      if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
+      setMicrophoneConnected(false);
+    }
+  }, [playing?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -437,6 +713,7 @@ function TvStage({ session }: { session: SessionState }) {
   return (
     <main className="tv-stage">
       <audio ref={audioRef} preload="auto" />
+      <audio ref={remoteAudioRef} autoPlay playsInline />
       <header className="tv-topbar">
         <div className="tv-brand"><span className="brand-mark">🎤</span><strong>KaraokeAI</strong></div>
         <div className="tv-session">
@@ -470,7 +747,7 @@ function TvStage({ session }: { session: SessionState }) {
                   </div>
                 )}
 
-                <div className="tv-playback">
+                    <div className="tv-playback">
                   <div className="tv-time">{Math.floor(elapsed / 60)}:{String(Math.floor(elapsed % 60)).padStart(2, '0')}</div>
                   {!audioEnabled && (
                     <button className="tv-audio-button" onClick={enableAudio}>🔊 Ativar áudio</button>
@@ -486,7 +763,7 @@ function TvStage({ session }: { session: SessionState }) {
               <span className="eyebrow">PALCO PRONTO</span>
               <h1>Aguardando a próxima música</h1>
               <p>O anfitrião inicia a apresentação pelo painel de controle.</p>
-              {!audioEnabled && <button className="tv-audio-button" onClick={enableAudio}>🔊 Ativar áudio da TV</button>}
+              {!playing && audioEnabled && <span className="tv-audio-ready">🔊 Áudio pronto</span>}
             </div>
           )}
         </div>
@@ -531,7 +808,19 @@ export function App() {
   const [searchPerformed, setSearchPerformed] = useState(false);
   const [roundCount, setRoundCount] = useState('1');
   const [roundOpen, setRoundOpen] = useState(false);
+  const [webrtcSignals, setWebRtcSignals] = useState<Array<{ id?: string; payload?: { command?: string; data?: WebRtcSignal } }>>([]);
 
+
+  useEffect(() => {
+    if (!transport) return;
+    return transport.subscribe((message) => {
+      if (!message.id) return;
+      if (message.type !== 'session.command') return;
+      const payload = message.payload as { command?: string; data?: WebRtcSignal } | undefined;
+      if (!payload?.command?.startsWith('webrtc.')) return;
+      setWebRtcSignals((current) => [...current.slice(-49), { id: message.id, payload }]);
+    });
+  }, [transport]);
 
   const joinParams = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
@@ -821,7 +1110,14 @@ export function App() {
   const tvJoinUrl = session ? buildTvJoinUrl(session) : '';
 
   if (view === 'tv' && session) {
-    return <TvStage session={session} />;
+    return (
+      <TvStage
+        session={session}
+        participantId={currentParticipantId}
+        transport={transport}
+        signals={webrtcSignals}
+      />
+    );
   }
 
   if (view === 'home') {
@@ -886,6 +1182,12 @@ export function App() {
             <p className="muted">Pesquise a música, confira a capa e a versão desejada e coloque-a na fila com um toque.</p>
             <div className="connection-line"><span className={`connection-badge ${connection}`}>{connection === 'online' ? '🟢 conectado' : '🟡 conectando'}</span><span>{session.participants.length} participante(s)</span><span>· rodada {session.roundMode.kind === 'open' ? 'aberta' : `${session.roundMode.songCount} música(s)`}</span></div>
           </div>
+          <SingerMicrophone
+            session={session}
+            participantId={currentParticipantId}
+            transport={transport}
+            signals={webrtcSignals}
+          />
           <div className="panel">
             <div className="panel-heading">
               <div><span className="eyebrow">SUA FILA</span><h3>Escolha uma música</h3></div>
