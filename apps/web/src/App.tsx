@@ -1159,6 +1159,7 @@ function TvStage({
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
   const handledSignalsRef = useRef(new Set<string>());
   const autoFinishSentRef = useRef<string | null>(null);
+  const scheduledPlaybackRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!transport) return;
@@ -1362,26 +1363,53 @@ function TvStage({
     const audio = audioRef.current;
     if (!audio || !manifest || !playing?.manifestUrl) return;
 
+    if (scheduledPlaybackRef.current !== null) {
+      window.clearTimeout(scheduledPlaybackRef.current);
+      scheduledPlaybackRef.current = null;
+    }
+
     const sourceUrl = resolveSongAssetUrl(playing.manifestUrl, manifest.files.instrumental);
     if (!sourceUrl) return;
 
     audio.src = sourceUrl;
     audio.load();
 
-    if (audioEnabled) {
-      audio.currentTime = elapsed;
+    const play = () => {
+      if (!audioEnabled) return;
+      audio.currentTime = playbackElapsedSeconds(playing);
       audio.play().catch(() => {
         setAudioEnabled(false);
         setAudioError('O navegador bloqueou a reprodução automática. Toque em “Ativar áudio”.');
       });
+
+      if (remoteAudioRef.current?.srcObject) {
+        remoteAudioRef.current.play().catch(() => undefined);
+      }
+    };
+
+    const startAt = Number(playing.playbackStartedAt ?? 0);
+    const delay = Math.max(0, startAt - Date.now());
+
+    if (audioEnabled) {
+      if (delay > 0) {
+        audio.pause();
+        audio.currentTime = 0;
+        scheduledPlaybackRef.current = window.setTimeout(play, delay);
+      } else {
+        play();
+      }
     }
 
     return () => {
+      if (scheduledPlaybackRef.current !== null) {
+        window.clearTimeout(scheduledPlaybackRef.current);
+        scheduledPlaybackRef.current = null;
+      }
       audio.pause();
       audio.removeAttribute('src');
       audio.load();
     };
-  }, [manifest, playing?.id]);
+  }, [manifest, playing?.id, playing?.playbackStartedAt, audioEnabled]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -1389,13 +1417,19 @@ function TvStage({
 
     if (!playing || playing.playbackState !== 'paused') {
       if (playing && audioEnabled && audio?.src) {
-        audio.currentTime = elapsed;
-        audio.play().catch(() => {
-          setAudioError('Não foi possível retomar o áudio automaticamente.');
-        });
-      }
-      if (playing && audioEnabled && remoteAudio?.srcObject) {
-        remoteAudio.play().catch(() => undefined);
+        const startsInMs = Math.max(0, Number(playing.playbackStartedAt ?? 0) - Date.now());
+        if (startsInMs > 0) {
+          audio.pause();
+          if (remoteAudio) remoteAudio.pause();
+        } else if (playing.playbackState === 'playing') {
+          audio.currentTime = elapsed;
+          audio.play().catch(() => {
+            setAudioError('Não foi possível iniciar o áudio automaticamente.');
+          });
+          if (remoteAudio?.srcObject) {
+            remoteAudio.play().catch(() => undefined);
+          }
+        }
       }
       return;
     }
@@ -1403,7 +1437,7 @@ function TvStage({
     audio?.pause();
     remoteAudio?.pause();
     if (audio) audio.currentTime = elapsed;
-  }, [playing?.id, playing?.playbackState, audioEnabled]); 
+  }, [playing?.id, playing?.playbackState, playing?.playbackStartedAt, audioEnabled, elapsed]); 
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -1464,20 +1498,24 @@ function TvStage({
       const context = setupMixer();
       if (context?.state === 'suspended') void context.resume();
 
-      audio.currentTime = elapsed;
-      const playback = [
-        audio.play(),
-        ...(remoteAudio?.srcObject ? [remoteAudio.play()] : [])
-      ];
+      const startsInMs = Math.max(0, Number(playing?.playbackStartedAt ?? 0) - Date.now());
+      audio.currentTime = startsInMs > 0 ? 0 : elapsed;
+      setAudioEnabled(true);
+      setAudioError('');
 
-      Promise.all(playback)
-        .then(() => {
-          setAudioEnabled(true);
-          setAudioError('');
-        })
-        .catch(() => {
+      if (startsInMs > 0) {
+        audio.pause();
+        remoteAudio?.pause();
+      } else {
+        const playback = [
+          audio.play(),
+          ...(remoteAudio?.srcObject ? [remoteAudio.play()] : [])
+        ];
+        Promise.all(playback).catch(() => {
+          setAudioEnabled(false);
           setAudioError('Não foi possível iniciar o áudio nesta tela.');
         });
+      }
     } catch (error) {
       setAudioError(error instanceof Error ? error.message : 'Não foi possível iniciar o mixer de áudio.');
     }
@@ -1485,6 +1523,10 @@ function TvStage({
 
   useEffect(() => {
     return () => {
+      if (scheduledPlaybackRef.current !== null) {
+        window.clearTimeout(scheduledPlaybackRef.current);
+        scheduledPlaybackRef.current = null;
+      }
       peerRef.current?.close();
       audioContextRef.current?.close().catch(() => undefined);
     };
