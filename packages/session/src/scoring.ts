@@ -164,3 +164,55 @@ export function scorePerformance(
     matchedSamples
   };
 }
+
+
+export function suggestTranspositionSemitones(
+  samples: PitchSample[],
+  reference: MelodyReferenceNote[],
+  options: {
+    minimumSamples?: number;
+    windowStartSeconds?: number;
+    windowEndSeconds?: number;
+    minimumAbsoluteShift?: number;
+    maximumShift?: number;
+  } = {}
+): number | null {
+  const minimumSamples = options.minimumSamples ?? 24;
+  const windowStartSeconds = options.windowStartSeconds ?? 12;
+  const windowEndSeconds = options.windowEndSeconds ?? 90;
+  const minimumAbsoluteShift = options.minimumAbsoluteShift ?? 0.8;
+  const maximumShift = options.maximumShift ?? 4;
+
+  const errors: number[] = [];
+
+  for (const sample of samples) {
+    if (sample.time < windowStartSeconds || sample.time > windowEndSeconds) continue;
+
+    const note = nearestReferenceNote(sample, reference);
+    if (!note) continue;
+
+    const distanceToNote =
+      sample.time < note.start
+        ? note.start - sample.time
+        : sample.time > note.end
+          ? sample.time - note.end
+          : 0;
+
+    if (distanceToNote > 0.25) continue;
+    errors.push(sample.midi - note.midi);
+  }
+
+  if (errors.length < minimumSamples) return null;
+
+  const sorted = [...errors].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2 === 0
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[middle];
+
+  const rounded = Math.round(median);
+  if (Math.abs(rounded) < minimumAbsoluteShift) return null;
+  if (Math.abs(rounded) > maximumShift) return null;
+
+  return rounded;
+}
