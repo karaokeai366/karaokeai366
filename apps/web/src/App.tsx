@@ -468,6 +468,7 @@ function SingerMicrophone({
   const [showManualTone, setShowManualTone] = useState(false);
   const [manualTone, setManualTone] = useState('');
   const [appliedTone, setAppliedTone] = useState<{ key: string; from: string } | null>(null);
+  const [restartProgress, setRestartProgress] = useState(0);
 
   function stop() {
     peerRef.current?.close();
@@ -555,7 +556,7 @@ function SingerMicrophone({
       pitchSamplesRef.current = [];
       performanceRef.current = {
         queueEntryId: playing.id,
-        performanceId: playing.id + '-' + startedAt
+        performanceId: playing.activePerformanceId ?? playing.id + '-' + startedAt
       };
       performanceStartRef.current = startedAt;
       toneSuggestionCheckedRef.current = false;
@@ -713,7 +714,7 @@ function SingerMicrophone({
       previousPlaybackStartedAtRef.current = startedAt;
       performanceRef.current = {
         queueEntryId: playing.id,
-        performanceId: playing.id + '-' + startedAt
+        performanceId: playing.activePerformanceId ?? playing.id + '-' + startedAt
       };
 
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -842,9 +843,29 @@ function SingerMicrophone({
   if (!playing || playing.ownerParticipantId !== participantId) return null;
 
   const remainingRestartCredits = session.restartCreditsByParticipant?.[participantId] ?? 0;
-  const restartProgress = playing?.playbackStartedAt && playing.durationSeconds
-    ? Math.min(100, Math.max(0, ((Date.now() - playing.playbackStartedAt) / 1000 / playing.durationSeconds) * 100))
-    : 0;
+
+  useEffect(() => {
+    if (!playing?.playbackStartedAt || !playing.durationSeconds) {
+      setRestartProgress(0);
+      return;
+    }
+
+    const update = () => {
+      setRestartProgress(
+        Math.min(
+          100,
+          Math.max(
+            0,
+            ((Date.now() - playing.playbackStartedAt!) / 1000 / playing.durationSeconds!) * 100
+          )
+        )
+      );
+    };
+
+    update();
+    const timer = window.setInterval(update, 250);
+    return () => window.clearInterval(timer);
+  }, [playing?.id, playing?.playbackStartedAt, playing?.durationSeconds]);
   const restartAvailable = Boolean(
     playing
     && playing.durationSeconds
@@ -1750,7 +1771,8 @@ export function App() {
         status: 'preparing',
         preparationStage: 'key',
         preparationProgress: 60,
-        preparationMessage: `Testando tom ${targetKey}…`
+        preparationMessage: `Testando tom ${targetKey}…`,
+        attemptCancelReason: 'key-test'
       });
 
       const prepared = await transposeSongKey(entry.assetId, targetKey);
