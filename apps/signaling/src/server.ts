@@ -542,7 +542,7 @@ wss.on('connection', (socket) => {
         });
 
         ensureRoundState(currentState);
-        const officialScores = queue
+        const officialScores = currentState.queue
           .filter((item: any) =>
             item.ownerParticipantId === entry.ownerParticipantId
             && item.roundId === (entry.roundId ?? currentState.roundId)
