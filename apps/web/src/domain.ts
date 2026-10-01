@@ -22,11 +22,22 @@ export interface Participant {
   online: boolean;
 }
 
+export interface QueueEntry {
+  id: string;
+  ownerParticipantId: string;
+  title: string;
+  artist?: string;
+  requestedKey?: string;
+  addedAt: number;
+  status: 'queued' | 'preparing' | 'ready' | 'playing' | 'completed' | 'cancelled';
+}
+
 export interface SessionState {
   sessionId: string;
   createdAt: number;
   hostParticipantId: string;
   participants: Participant[];
+  queue: QueueEntry[];
   queueSize: number;
   roundMode: RoundMode;
   status: 'lobby' | 'playing' | 'finished';
