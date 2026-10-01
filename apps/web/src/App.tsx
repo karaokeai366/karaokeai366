@@ -2030,6 +2030,9 @@ function TvStage({
               <span className="eyebrow">PRÓXIMO CANTOR</span>
               <strong>🎙️ {nextOwner?.name ?? 'Participante'}</strong>
               <span>{nextEntry.title}</span>
+              <small className={nextEntry.status === 'ready' ? 'next-ready' : ''}>
+                {nextEntry.status === 'ready' ? '✓ PRONTO PARA O PALCO' : '⏳ preparando'}
+              </small>
             </div>
           )}
           {upcoming.slice(0, 6).map((entry, index) => (
