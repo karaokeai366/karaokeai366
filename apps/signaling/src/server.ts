@@ -537,6 +537,10 @@ wss.on('connection', (socket) => {
           };
         });
 
+        if (nextStatus === 'playing') {
+          currentState.status = 'playing';
+        }
+
         session.state = currentState;
         broadcast(session, 'session.state', { state: session.state });
         break;
@@ -1018,6 +1022,13 @@ wss.on('connection', (socket) => {
         }
 
         const currentState = session.state as any;
+        const activeEntry = Array.isArray(currentState?.queue)
+          ? currentState.queue.find((item: any) => item.status === 'playing')
+          : null;
+        if (activeEntry) {
+          reject(socket, 'Finalize ou pule a apresentação atual antes de configurar uma nova rodada.');
+          return;
+        }
         if (!currentState) {
           reject(socket, 'Estado da sessão indisponível.');
           return;
