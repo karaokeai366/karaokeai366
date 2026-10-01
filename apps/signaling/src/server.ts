@@ -197,7 +197,8 @@ function startNextQueueEntry(state: any, queue: any[]): any[] | null {
   const next = findAutoAdvanceEntry(state, queue);
   if (!next) return null;
 
-  const startAt = Date.now();
+  const now = Date.now();
+  const startAt = now + 3000;
   const attemptState = transitionPerformanceAttempt(
     next,
     'playing',
