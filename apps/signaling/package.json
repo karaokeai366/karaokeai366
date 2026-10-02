@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx src/serverPartyReadyFixed.ts",
     "build": "tsc",
-    "start": "node dist/serverPartyReadyFixed.js"
+    "start": "node dist/serverPartyReadyFixed.js",
+    "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
     "ws": "^8.22.0"
