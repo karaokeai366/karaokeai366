@@ -31,11 +31,6 @@ export interface SessionEventAudience {
   excludeParticipantIds?: string[];
 }
 
-/**
- * Creates the transport-neutral envelope used by future targeted/delta
- * broadcasts. Keeping this in the session package prevents the WebSocket
- * server from becoming the owner of the domain event shape.
- */
 export function createSessionEvent<TPayload>(
   type: SessionEventType,
   sessionId: string,
@@ -58,11 +53,6 @@ export function createSessionEvent<TPayload>(
   };
 }
 
-/**
- * Returns whether a connected participant is eligible for an event audience.
- * This is intentionally transport-neutral; the signaling layer decides how
- * to map the result to sockets.
- */
 export function isEventAudienceMatch(
   participant: { id: string; role: 'host' | 'participant' | 'tv' },
   audience?: SessionEventAudience
