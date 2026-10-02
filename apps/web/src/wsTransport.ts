@@ -216,6 +216,11 @@ function createRoundId(): string {
   return `round-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function createSessionId(): string {
+  if (typeof crypto.randomUUID === 'function') return `session-${crypto.randomUUID()}`;
+  return `session-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 function injectHostSessionControls(transport: WebSocketTransport): void {
   const install = () => {
     const stored = readStoredSession();
@@ -278,10 +283,14 @@ function injectHostSessionControls(transport: WebSocketTransport): void {
       if (!host) return;
 
       saveHistory(buildHistoryEntry(current, 'restart'));
+      const nextSessionId = createSessionId();
+      const now = Date.now();
       const nextState = {
         ...current,
-        createdAt: Date.now(),
-        participants: [{ ...host, role: 'host', online: true, joinedAt: Date.now() }],
+        sessionId: nextSessionId,
+        createdAt: now,
+        hostParticipantId: host.id,
+        participants: [{ ...host, role: 'host', online: true, joinedAt: now }],
         queue: [],
         queueSize: 0,
         roundId: createRoundId(),
@@ -291,9 +300,14 @@ function injectHostSessionControls(transport: WebSocketTransport): void {
       } as SessionState;
 
       try {
-        transport.sendRaw('session.state.set', current.sessionId, transport.participantId, { state: nextState });
+        transport.sendRaw('session.create', nextSessionId, transport.participantId, {
+          state: nextState,
+          name: host.name,
+          capabilities: host.capabilities
+        });
         localStorage.setItem(SESSION_KEY, JSON.stringify(nextState));
-        window.alert('Nova sessão iniciada. Os resultados da sessão anterior estão em 🏆 Resultados.');
+        window.alert('Nova sessão iniciada. Os resultados da sessão anterior estão em 🏆 Resultados. O QR Code será atualizado.');
+        window.location.reload();
       } catch {
         window.alert('Não foi possível iniciar a nova sessão porque a conexão com o servidor foi perdida.');
       }
