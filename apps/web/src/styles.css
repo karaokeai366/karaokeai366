@@ -366,3 +366,15 @@ button { border: 0; border-radius: 14px; min-height: 48px; padding: 0 18px; colo
 
 .host-recovery-panel { display: flex; align-items: center; justify-content: space-between; gap: 18px; border-style: dashed; }
 @media (max-width: 620px) { .host-recovery-panel { align-items: stretch; flex-direction: column; } }
+
+.stored-session-card { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 28px; padding: 18px; border: 1px solid #30385a; border-radius: 18px; background: rgba(12, 16, 28, .82); }
+.stored-session-card > div:first-child { display: grid; gap: 5px; }
+.stored-session-card strong { font-size: 16px; }
+.stored-session-card small { color: #7f88a4; font-size: 11px; }
+.stored-session-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.stored-session-actions button { min-height: 42px; font-size: 12px; }
+@media (max-width: 620px) {
+  .stored-session-card { align-items: stretch; flex-direction: column; }
+  .stored-session-actions { justify-content: stretch; }
+  .stored-session-actions button { flex: 1; }
+}
