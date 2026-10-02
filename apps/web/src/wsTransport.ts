@@ -41,7 +41,7 @@ function createRoundId(): string {
 function injectHostSessionControls(transport: WebSocketTransport): void {
   const install = () => {
     const stored = readStoredSession();
-    if (!stored || stored.hostParticipantId !== transport.senderId) {
+    if (!stored || stored.hostParticipantId !== transport.participantId) {
       document.getElementById(HOST_CONTROLS_ID)?.remove();
       return;
     }
@@ -78,7 +78,7 @@ function injectHostSessionControls(transport: WebSocketTransport): void {
 
     newSessionButton.onclick = () => {
       const current = readStoredSession();
-      if (!current || current.hostParticipantId !== transport.senderId) return;
+      if (!current || current.hostParticipantId !== transport.participantId) return;
 
       const confirmed = window.confirm(
         'Iniciar uma nova sessão?\n\nA fila, a música em reprodução e os participantes conectados serão limpos. Os celulares precisarão entrar novamente pelo QR Code.\n\nEsta ação não pode ser desfeita.'
@@ -101,7 +101,7 @@ function injectHostSessionControls(transport: WebSocketTransport): void {
       };
 
       try {
-        transport.sendRaw('session.state.set', current.sessionId, transport.senderId, { state: nextState });
+        transport.sendRaw('session.state.set', current.sessionId, transport.participantId, { state: nextState });
         localStorage.setItem(SESSION_KEY, JSON.stringify(nextState));
       } catch {
         window.alert('Não foi possível iniciar a nova sessão porque a conexão com o servidor foi perdida.');
@@ -110,7 +110,7 @@ function injectHostSessionControls(transport: WebSocketTransport): void {
 
     endButton.onclick = () => {
       const current = readStoredSession();
-      if (!current || current.hostParticipantId !== transport.senderId) return;
+      if (!current || current.hostParticipantId !== transport.participantId) return;
 
       const confirmation = window.prompt(
         'Encerrar a sessão apagará a fila, desconectará os participantes e encerrará o palco.\n\nPara confirmar, digite ENCERRAR:'
@@ -131,7 +131,7 @@ function injectHostSessionControls(transport: WebSocketTransport): void {
       };
 
       try {
-        transport.sendRaw('session.state.set', current.sessionId, transport.senderId, { state: endedState });
+        transport.sendRaw('session.state.set', current.sessionId, transport.participantId, { state: endedState });
         clearStoredSession();
         window.setTimeout(() => {
           transport.disconnect();
@@ -168,6 +168,10 @@ export class WebSocketTransport {
   private recoveringSnapshot = false;
 
   constructor(private readonly url: string) {}
+
+  get participantId(): string {
+    return this.senderId;
+  }
 
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
