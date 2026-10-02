@@ -1,8 +1,14 @@
 import type { SongAssetManifest, SongSearchResult } from '../../../packages/media/src/song';
 
-const MEDIA_WORKER_URL =
-  (import.meta.env.VITE_MEDIA_WORKER_URL as string | undefined) ??
-  'http://localhost:8790';
+function getMediaWorkerUrl(): string {
+  const configured = import.meta.env.VITE_MEDIA_WORKER_URL as string | undefined;
+  if (configured) return configured.replace(/\/$/, '');
+
+  // In local-network testing, localhost would point back to the phone/tablet.
+  // Use the same host that served the web app so desktop and mobile clients
+  // reach the Media Worker on the karaoke server.
+  return `${window.location.protocol}//${window.location.hostname}:8790`;
+}
 
 interface WorkerSongSearchResult {
   source_id: string;
@@ -17,7 +23,7 @@ interface WorkerSongSearchResult {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(MEDIA_WORKER_URL + path, init);
+  const response = await fetch(getMediaWorkerUrl() + path, init);
   if (!response.ok) {
     const detail = await response.text().catch(() => '');
     throw new Error(detail || `Worker de mídia respondeu ${response.status}.`);
@@ -45,7 +51,6 @@ export async function searchSongs(query: string): Promise<SongSearchResult[]> {
     sourceUrl: result.source_url
   }));
 }
-
 
 export interface MediaPrepareJob {
   jobId: string;
@@ -78,17 +83,15 @@ export async function startSongPreparation(source: SongSearchResult, mediaKind: 
   });
 }
 
-
 export async function getSongPreparationStatus(jobId: string): Promise<MediaPrepareStatus> {
   const status = await request<MediaPrepareStatus>(`/prepare/${encodeURIComponent(jobId)}`);
 
   if (status.manifestUrl) {
-    status.manifestUrl = new URL(status.manifestUrl, `${MEDIA_WORKER_URL}/`).toString();
+    status.manifestUrl = new URL(status.manifestUrl, `${getMediaWorkerUrl()}/`).toString();
   }
 
   return status;
 }
-
 
 export async function getSongAssetManifest(manifestUrl: string): Promise<SongAssetManifest> {
   const response = await fetch(manifestUrl, { cache: 'force-cache' });
@@ -126,7 +129,7 @@ export async function transposeSongKey(
 
   response.manifestUrl = new URL(
     response.manifestUrl,
-    MEDIA_WORKER_URL + '/'
+    `${getMediaWorkerUrl()}/`
   ).toString();
 
   return response;
