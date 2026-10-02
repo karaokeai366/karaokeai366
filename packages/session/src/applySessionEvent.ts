@@ -1,20 +1,20 @@
 import type { SessionEvent } from './sessionEvents';
 
 /**
- * Applies the incremental events emitted by the signaling layer to a local
- * session snapshot. Unknown events are intentionally ignored so older clients
- * can continue using snapshots while the event migration is rolled out.
+ * Applies incremental signaling events to a local session snapshot.
+ * Snapshots remain the recovery mechanism when an event gap is detected.
  */
 export function applySessionEvent<T extends Record<string, any>>(
   state: T,
   event: SessionEvent
 ): T {
   const payload = event.payload as Record<string, any> | undefined;
+  const queue = Array.isArray(state.queue) ? state.queue : [];
 
   switch (event.type) {
     case 'participant.joined': {
       if (!payload?.participant?.id) return state;
-      const participants = Array.isArray(state.participants) ? [...state.participants] : [];
+      const participants = [...(Array.isArray(state.participants) ? state.participants : [])];
       const index = participants.findIndex((item: any) => item.id === payload.participant.id);
       if (index >= 0) participants[index] = payload.participant;
       else participants.push(payload.participant);
@@ -43,44 +43,113 @@ export function applySessionEvent<T extends Record<string, any>>(
     }
 
     case 'host.changed':
-      return payload?.hostParticipantId
-        ? { ...state, hostParticipantId: payload.hostParticipantId }
-        : state;
+      return {
+        ...state,
+        ...(payload?.hostParticipantId ? { hostParticipantId: payload.hostParticipantId } : {}),
+        ...(payload?.state ?? {})
+      };
 
     case 'queue.added': {
       if (!payload?.entry?.id) return state;
-      const queue = Array.isArray(state.queue) ? [...state.queue] : [];
-      const index = queue.findIndex((item: any) => item.id === payload.entry.id);
-      if (index >= 0) queue[index] = payload.entry;
-      else queue.push(payload.entry);
-      return { ...state, queue, queueSize: queue.length };
+      const nextQueue = [...queue];
+      const index = nextQueue.findIndex((item: any) => item.id === payload.entry.id);
+      if (index >= 0) nextQueue[index] = payload.entry;
+      else nextQueue.push(payload.entry);
+      return { ...state, queue: nextQueue, queueSize: nextQueue.length };
     }
 
     case 'queue.updated': {
       if (!payload?.entry?.id) return state;
-      const queue = Array.isArray(state.queue) ? state.queue : [];
-      return {
-        ...state,
-        queue: queue.map((item: any) =>
-          item.id === payload.entry.id ? { ...item, ...payload.entry } : item
-        )
-      };
+      const nextQueue = queue.map((item: any) =>
+        item.id === payload.entry.id ? { ...item, ...payload.entry } : item
+      );
+      return { ...state, queue: nextQueue, queueSize: nextQueue.length };
     }
 
     case 'queue.removed': {
       if (!payload?.queueEntryId) return state;
-      const queue = (Array.isArray(state.queue) ? state.queue : [])
-        .filter((item: any) => item.id !== payload.queueEntryId);
-      return { ...state, queue, queueSize: queue.length };
+      const nextQueue = queue.filter((item: any) => item.id !== payload.queueEntryId);
+      return { ...state, queue: nextQueue, queueSize: nextQueue.length };
     }
 
     case 'queue.next':
-    case 'singer.called':
-    case 'performance.started':
-    case 'performance.paused':
-    case 'performance.resumed':
-    case 'performance.finished':
-    case 'performance.scored':
+    case 'singer.called': {
+      if (!payload?.queueEntryId) return state;
+      const nextQueue = queue.map((item: any) =>
+        item.id === payload.queueEntryId
+          ? {
+              ...item,
+              status: 'playing',
+              ...(payload.playbackStartedAt ? { playbackStartedAt: payload.playbackStartedAt } : {}),
+              ...(payload.performanceId ? { activePerformanceId: payload.performanceId } : {})
+            }
+          : item
+      );
+      return { ...state, queue: nextQueue, queueSize: nextQueue.length, status: 'playing' };
+    }
+
+    case 'performance.started': {
+      if (!payload?.queueEntryId) return state;
+      const nextQueue = queue.map((item: any) =>
+        item.id === payload.queueEntryId
+          ? {
+              ...item,
+              status: 'playing',
+              ...(payload.performanceId ? { activePerformanceId: payload.performanceId } : {}),
+              ...(payload.playbackStartedAt ? { playbackStartedAt: payload.playbackStartedAt } : {})
+            }
+          : item
+      );
+      return { ...state, queue: nextQueue, queueSize: nextQueue.length, status: 'playing' };
+    }
+
+    case 'performance.paused': {
+      if (!payload?.queueEntryId) return state;
+      const nextQueue = queue.map((item: any) =>
+        item.id === payload.queueEntryId
+          ? { ...item, playbackState: 'paused', ...(payload.playbackPositionSeconds !== undefined ? { playbackPositionSeconds: payload.playbackPositionSeconds } : {}) }
+          : item
+      );
+      return { ...state, queue: nextQueue };
+    }
+
+    case 'performance.resumed': {
+      if (!payload?.queueEntryId) return state;
+      const nextQueue = queue.map((item: any) =>
+        item.id === payload.queueEntryId
+          ? { ...item, playbackState: 'playing', ...(payload.playbackStartedAt ? { playbackStartedAt: payload.playbackStartedAt } : {}) }
+          : item
+      );
+      return { ...state, queue: nextQueue };
+    }
+
+    case 'performance.finished': {
+      if (!payload?.queueEntryId) return state;
+      const nextQueue = queue.map((item: any) =>
+        item.id === payload.queueEntryId
+          ? { ...item, status: payload.status ?? 'completed', playbackState: undefined }
+          : item
+      );
+      return { ...state, queue: nextQueue, queueSize: nextQueue.length };
+    }
+
+    case 'performance.scored': {
+      if (!payload?.queueEntryId) return state;
+      const nextQueue = queue.map((item: any) =>
+        item.id === payload.queueEntryId
+          ? { ...item, ...(payload.score ? { score: payload.score } : {}) }
+          : item
+      );
+      return {
+        ...state,
+        queue: nextQueue,
+        queueSize: nextQueue.length,
+        ...(payload.roundResultsByParticipant
+          ? { roundResultsByParticipant: payload.roundResultsByParticipant }
+          : {})
+      };
+    }
+
     case 'round.updated':
     case 'session.settings.changed':
       return payload?.state ? { ...state, ...payload.state } : state;
