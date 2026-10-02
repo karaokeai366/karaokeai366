@@ -74,24 +74,72 @@ def probe_duration(media_file: Path) -> float | None:
     return float(value) if value else None
 
 
-def download_source(source_url: str, folder: Path, media_kind: str) -> Path:
+def run_download_command(
+    args: list[str],
+    progress: Callable[[float, str], None] | None = None,
+) -> None:
+    try:
+        process = subprocess.Popen(
+            args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+        )
+    except FileNotFoundError as exc:
+        raise PipelineError(f"Dependência nativa ausente: {args[0]}.") from exc
+
+    last_message = ""
+    try:
+        assert process.stdout is not None
+        for raw_line in process.stdout:
+            line = raw_line.strip()
+            if not line:
+                continue
+            last_message = line
+            match = re.search(r"(\d+(?:\.\d+)?)%", line)
+            if match and progress:
+                progress(float(match.group(1)), line)
+        return_code = process.wait(timeout=1800)
+    except subprocess.TimeoutExpired as exc:
+        process.kill()
+        process.wait()
+        raise PipelineError("O download da música excedeu o limite de 30 minutos.") from exc
+
+    if return_code != 0:
+        raise PipelineError(last_message[-3000:] or "Falha no download da música.")
+
+
+def download_source(
+    source_url: str,
+    folder: Path,
+    media_kind: str,
+    progress: Callable[[float, str], None] | None = None,
+) -> Path:
     output = folder / "original.%(ext)s"
     if media_kind == "audio":
         format_args = ["-f", "bestaudio/best", "--extract-audio"]
     else:
         format_args = ["-f", "bv*+ba/b", "--merge-output-format", "mp4"]
 
-    run_command(
+    run_download_command(
         [
             "yt-dlp",
+            "--ignore-config",
             "--no-playlist",
             "--no-warnings",
             "--restrict-filenames",
+            "--newline",
+            "--retries", "3",
+            "--fragment-retries", "3",
+            "--socket-timeout", "30",
             *format_args,
-            "-o",
-            str(output),
+            "-o", str(output),
             source_url,
-        ]
+        ],
+        progress=progress,
     )
 
     candidates = sorted(
@@ -609,8 +657,14 @@ def prepare_asset(
     if not (source_url.startswith("https://") or source_url.startswith("http://")):
         raise PipelineError("A fonte deve ser uma URL HTTP(S).")
 
-    report_progress(progress, "download", 5, "Baixando a música selecionada…")
-    original = download_source(source_url, folder, media_kind)
+    report_progress(progress, "download", 5, "Conectando à fonte da música…")
+
+    def download_progress(percent: float, detail: str) -> None:
+        mapped = 5 + round(max(0.0, min(100.0, percent)) * 0.17)
+        report_progress(progress, "download", mapped, f"Baixando a música… {percent:.1f}%")
+
+    original = download_source(source_url, folder, media_kind, download_progress)
+    report_progress(progress, "download", 22, "Download concluído. Preparando o áudio…")
     report_progress(progress, "normalize", 25, "Normalizando o áudio…")
     normalized = folder / "mix.wav"
     duration_seconds = normalize_audio(original, normalized)
