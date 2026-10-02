@@ -78,6 +78,7 @@ export interface SessionState {
   sessionId: string;
   createdAt: number;
   hostParticipantId: string;
+  maxParticipants?: number;
   participants: Participant[];
   queue: QueueEntry[];
   queueSize: number;
