@@ -33,8 +33,13 @@ export interface Envelope<TPayload = unknown> {
   payload: TPayload;
 }
 
+export interface SessionCreateRequest {
+  maxParticipants?: number;
+}
+
 export interface SessionSettingsSetRequest {
   autoAdvance?: boolean;
+  maxParticipants?: number;
 }
 
 export interface QueueAddRequest {
