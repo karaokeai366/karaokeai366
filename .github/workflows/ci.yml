@@ -32,9 +32,33 @@ jobs:
           node-version: 24
       - run: npm install
       - run: npm run build
-      - run: node dist/serverPartyReadyV2.js > /tmp/karaokeai-signaling.log 2>&1 &
-      - run: sleep 1
-      - run: npm run smoke
+      - name: Start signaling and run smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          node dist/serverPartyReadyV2.js > /tmp/karaokeai-signaling.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; cat /tmp/karaokeai-signaling.log' EXIT
+
+          for attempt in {1..30}; do
+            if (echo > /dev/tcp/127.0.0.1/8787) >/dev/null 2>&1; then
+              break
+            fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              echo "Signaling process exited before becoming ready."
+              cat /tmp/karaokeai-signaling.log
+              exit 1
+            fi
+            sleep 0.5
+          done
+
+          if ! (echo > /dev/tcp/127.0.0.1/8787) >/dev/null 2>&1; then
+            echo "Signaling server did not start on port 8787."
+            cat /tmp/karaokeai-signaling.log
+            exit 1
+          fi
+
+          npm run smoke
 
   media-worker:
     runs-on: ubuntu-latest
