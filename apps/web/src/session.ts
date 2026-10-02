@@ -71,15 +71,31 @@ export function getLocalSession(): SessionState | null {
   }
 }
 
+function getPublicAppOrigin(): string {
+  const configured = import.meta.env.VITE_PUBLIC_APP_URL as string | undefined;
+  if (configured) return configured.replace(/\/$/, '');
+
+  // QR codes must point to an address reachable by other devices. When the
+  // Host opened the app using localhost, the browser cannot discover the PC's
+  // LAN address reliably, so require an explicit public URL in that case.
+  const hostname = window.location.hostname;
+  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
+    throw new Error(
+      'O endereço do QR Code não está acessível pela rede. Configure VITE_PUBLIC_APP_URL com o endereço do PC, por exemplo http://192.168.99.23:5173.'
+    );
+  }
+
+  return window.location.origin;
+}
+
 export function buildJoinUrl(session: SessionState): string {
   const params = new URLSearchParams({
     join: '1',
     session: session.sessionId,
     host: session.hostParticipantId
   });
-  return window.location.origin + '/?' + params.toString();
+  return `${getPublicAppOrigin()}/?${params.toString()}`;
 }
-
 
 export function buildTvJoinUrl(session: SessionState): string {
   const params = new URLSearchParams({
@@ -88,5 +104,5 @@ export function buildTvJoinUrl(session: SessionState): string {
     session: session.sessionId,
     host: session.hostParticipantId
   });
-  return window.location.origin + '/?' + params.toString();
+  return `${getPublicAppOrigin()}/?${params.toString()}`;
 }
