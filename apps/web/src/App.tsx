@@ -2158,11 +2158,12 @@ export function App() {
   const [webrtcSignals, setWebRtcSignals] = useState<Array<{ id?: string; payload?: { command?: string; data?: WebRtcSignal } }>>([]);
 
 
-  function scheduleReconnect(): void {
+  function scheduleReconnect(participantIdOverride?: string): void {
     if (reconnectTimerRef.current !== null) return;
 
     const saved = getLocalSession();
-    if (!saved || !currentParticipantId) return;
+    const participantId = participantIdOverride ?? currentParticipantId;
+    if (!saved || !participantId) return;
 
     const attempt = reconnectAttemptRef.current;
     const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
@@ -2170,7 +2171,7 @@ export function App() {
 
     reconnectTimerRef.current = window.setTimeout(() => {
       reconnectTimerRef.current = null;
-      void reconnectCurrentSession(saved, currentParticipantId);
+      void reconnectCurrentSession(saved, participantId);
     }, delay);
   }
 
@@ -2260,7 +2261,7 @@ export function App() {
       if (state === 'close' && !intentional) {
         setConnection('offline');
         setError('Conexão perdida. Tentando reconectar automaticamente…');
-        scheduleReconnect();
+        scheduleReconnect(participantId);
       }
     });
 
@@ -2332,7 +2333,7 @@ export function App() {
       if (state === 'close' && !intentional) {
         setConnection('offline');
         setError('Conexão perdida. Tentando reconectar automaticamente…');
-        if (getLocalSession()?.sessionId === joinParams.sessionId) scheduleReconnect();
+        if (getLocalSession()?.sessionId === joinParams.sessionId) scheduleReconnect(participantId);
       }
     });
 
