@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { DEFAULT_SESSION_CAPACITY, normalizeSessionCapacity } from './sessionCapacity';
 import { canAddSong, defaultMaxSongsPerParticipant } from './partyQueuePolicy';
 import { selectNextFairCandidate, type FairQueueCandidate } from './queueFairness';
@@ -90,6 +89,11 @@ export function selectNextSinger(
   return selected ? queue.find(entry => entry.id === selected.queueEntryId) : undefined;
 }
 
-export function createPartyEventId(): string {
-  return randomUUID();
+/**
+ * Event identity is a signaling concern. Keeping it out of this package makes
+ * the session domain safe to reuse in browser clients.
+ */
+export interface PartyEventIdentity {
+  sessionId: string;
+  sequence: number;
 }
