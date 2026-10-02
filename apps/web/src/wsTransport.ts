@@ -1,4 +1,14 @@
 import type { Envelope } from '../../../packages/protocol/src/messages';
+import type { SessionState } from './domain';
+import type { SessionEvent } from '../../../packages/session/src/sessionEvents';
+import {
+  createSessionEventCursor,
+  hasSessionEventGap,
+  markSessionEventProcessed,
+  shouldProcessSessionEvent,
+  type SessionEventCursor
+} from '../../../packages/session/src/sessionEventCursor';
+import { applySessionEvent } from '../../../packages/session/src/applySessionEvent';
 
 type RawMessage = {
   id?: string;
@@ -12,6 +22,11 @@ export class WebSocketTransport {
   private intentionalClose = false;
   private readonly listeners = new Set<(message: RawMessage) => void>();
   private readonly connectionListeners = new Set<(state: 'open' | 'close', intentional: boolean) => void>();
+  private sessionState: SessionState | null = null;
+  private eventCursor: SessionEventCursor | null = null;
+  private sessionId = '';
+  private senderId = '';
+  private recoveringSnapshot = false;
 
   constructor(private readonly url: string) {}
 
@@ -29,7 +44,7 @@ export class WebSocketTransport {
       socket.onmessage = (event) => {
         try {
           const message = JSON.parse(String(event.data)) as RawMessage;
-          for (const listener of this.listeners) listener(message);
+          this.processIncomingMessage(message);
         } catch {
           // Ignore malformed server messages.
         }
@@ -43,6 +58,60 @@ export class WebSocketTransport {
     });
   }
 
+  private processIncomingMessage(message: RawMessage): void {
+    if (message.type === 'session.created'
+      || message.type === 'session.joined'
+      || message.type === 'session.reconnected'
+      || message.type === 'session.state') {
+      const incoming = (message.payload as { state?: SessionState } | undefined)?.state;
+      if (incoming) {
+        this.sessionState = incoming;
+        this.sessionId = incoming.sessionId;
+        this.eventCursor = createSessionEventCursor(incoming.sessionId);
+        this.recoveringSnapshot = false;
+      }
+    }
+
+    if (message.type === 'session.event' && message.payload) {
+      const event = message.payload as SessionEvent;
+      if (
+        this.sessionState
+        && this.eventCursor
+        && typeof event.eventId === 'string'
+        && typeof event.sessionId === 'string'
+        && Number.isInteger(event.sequence)
+      ) {
+        if (hasSessionEventGap(this.eventCursor, event)) {
+          if (!this.recoveringSnapshot) {
+            this.recoveringSnapshot = true;
+            this.sendRaw('session.state.request', this.sessionId, this.senderId, {});
+          }
+          return;
+        }
+
+        if (shouldProcessSessionEvent(this.eventCursor, event)) {
+          this.sessionState = applySessionEvent(this.sessionState, event);
+          this.eventCursor = markSessionEventProcessed(this.eventCursor, event);
+          this.emit({
+            id: message.id ?? event.eventId,
+            type: 'session.state',
+            timestamp: message.timestamp ?? event.timestamp,
+            payload: { state: this.sessionState, incremental: true, event }
+          });
+          return;
+        }
+
+        return;
+      }
+    }
+
+    this.emit(message);
+  }
+
+  private emit(message: RawMessage): void {
+    for (const listener of this.listeners) listener(message);
+  }
+
   disconnect(): void {
     this.intentionalClose = true;
     this.socket?.close();
@@ -54,6 +123,8 @@ export class WebSocketTransport {
       throw new Error('Transporte WebSocket desconectado.');
     }
 
+    this.sessionId = message.sessionId;
+    this.senderId = message.senderId;
     this.socket.send(JSON.stringify(message));
   }
 
@@ -62,6 +133,8 @@ export class WebSocketTransport {
       throw new Error('Transporte WebSocket desconectado.');
     }
 
+    this.sessionId = sessionId;
+    this.senderId = senderId;
     this.socket.send(JSON.stringify({
       type,
       sessionId,
