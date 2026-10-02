@@ -9,5 +9,5 @@
     "rootDir": "src",
     "declaration": true
   },
-  "include": ["src/serverPartyReadyFixed.ts"]
+  "include": ["src/serverPartyReadyV2.ts"]
 }
