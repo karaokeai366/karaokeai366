@@ -7,10 +7,13 @@ export type MessageType =
   | 'session.reconnected'
   | 'session.state'
   | 'session.state.request'
+  | 'session.event'
   | 'session.error'
   | 'participant.joined'
   | 'participant.left'
   | 'host.disconnected'
+  | 'host.claim'
+  | 'host.transfer'
   | 'session.command'
   | 'session.state.set'
   | 'session.settings.set'
@@ -33,30 +36,10 @@ export interface Envelope<TPayload = unknown> {
   payload: TPayload;
 }
 
-export interface SessionCreateRequest {
-  maxParticipants?: number;
-}
-
-export interface SessionSettingsSetRequest {
-  autoAdvance?: boolean;
-  maxParticipants?: number;
-}
-
-export interface QueueAddRequest {
-  title: string;
-  artist?: string;
-  sourceId?: string;
-  source?: string;
-  sourceUrl?: string;
-  thumbnailUrl?: string;
-  requestedKey?: string;
-  durationSeconds?: number;
-}
-
-export interface QueueRemoveRequest {
-  queueEntryId: string;
-}
-
+export interface SessionCreateRequest { maxParticipants?: number; }
+export interface SessionSettingsSetRequest { autoAdvance?: boolean; maxParticipants?: number; }
+export interface QueueAddRequest { title: string; artist?: string; sourceId?: string; source?: string; sourceUrl?: string; thumbnailUrl?: string; requestedKey?: string; durationSeconds?: number; }
+export interface QueueRemoveRequest { queueEntryId: string; }
 export interface QueueStatusSetRequest {
   queueEntryId: string;
   status: 'queued' | 'preparing' | 'ready' | 'playing' | 'completed' | 'cancelled';
@@ -72,35 +55,12 @@ export interface QueueStatusSetRequest {
   performanceId?: string;
   attemptCancelReason?: 'restart' | 'key-test' | 'abandoned';
 }
-
-export interface PlaybackControlRequest {
-  queueEntryId?: string;
-  action: 'pause' | 'resume' | 'skip' | 'end';
-}
-
-export interface RoundConfigureRequest {
-  mode: { kind: 'songs'; songCount: number } | { kind: 'open' };
-}
-
-export interface RestartRequest {
-  queueEntryId: string;
-  performanceId: string;
-  progressPercent: number;
-}
-
-export interface HostTransferRequest {
-  targetParticipantId: string;
-}
-
+export interface PlaybackControlRequest { queueEntryId?: string; action: 'pause' | 'resume' | 'skip' | 'end'; }
+export interface RoundConfigureRequest { mode: { kind: 'songs'; songCount: number } | { kind: 'open' }; }
+export interface RestartRequest { queueEntryId: string; performanceId: string; progressPercent: number; }
+export interface HostTransferRequest { targetParticipantId: string; }
 export interface PerformanceCompleteRequest {
   queueEntryId: string;
   performanceId: string;
-  score: {
-    overall: number;
-    pitch: number;
-    precision: number;
-    rhythm: number;
-    stability: number;
-    matchedSamples: number;
-  };
+  score: { overall: number; pitch: number; precision: number; rhythm: number; stability: number; matchedSamples: number; };
 }
