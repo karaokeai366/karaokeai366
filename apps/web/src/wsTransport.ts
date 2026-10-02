@@ -236,7 +236,7 @@ function injectHostSessionControls(transport: WebSocketTransport): void {
     wrapper.style.cssText = [
       'position:fixed',
       'right:16px',
-      'top:76px',
+      'top:14px',
       'z-index:10000',
       'display:flex',
       'gap:8px',
