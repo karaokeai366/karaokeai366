@@ -11,8 +11,11 @@ import type {
   SessionCreateRequest,
   SessionSettingsSetRequest
 } from '../../../packages/protocol/src/messages';
-import { randomUUID } from 'node:crypto';
 import { WebSocketTransport } from './wsTransport';
+
+function newId(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 
 /** Typed client facade for every command exposed by the party signaling server. */
 export class PartyApi {
@@ -23,14 +26,7 @@ export class PartyApi {
   ) {}
 
   private send<T>(type: Envelope<T>['type'], payload: T): void {
-    this.transport.send({
-      id: randomUUID(),
-      type,
-      sessionId: this.sessionId,
-      senderId: this.senderId,
-      timestamp: Date.now(),
-      payload
-    });
+    this.transport.send({ id: newId(), type, sessionId: this.sessionId, senderId: this.senderId, timestamp: Date.now(), payload });
   }
 
   createSession(payload: SessionCreateRequest = {}): void { this.send('session.create', payload); }
