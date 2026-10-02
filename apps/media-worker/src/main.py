@@ -188,15 +188,25 @@ def run_command(args: list[str]) -> str:
 
 @app.get("/health")
 def health() -> dict[str, Any]:
+    deno_available = shutil.which("deno") is not None
+    try:
+        import yt_dlp_ejs  # type: ignore[import-not-found]
+        ejs_available = yt_dlp_ejs is not None
+    except ImportError:
+        ejs_available = False
+
     return {
         "status": "ok",
         "version": APP_VERSION,
         "yt_dlp": shutil.which("yt-dlp") is not None,
+        "yt_dlp_ejs": ejs_available,
+        "deno": deno_available,
+        "youtube_ready": deno_available and ejs_available,
         "ffmpeg": shutil.which("ffmpeg") is not None,
         "ffprobe": shutil.which("ffprobe") is not None,
         "audio_separator": shutil.which("audio-separator") is not None,
         "source_separation_enabled": SOURCE_SEPARATION_ENABLED,
-    "key_transposition": True,
+        "key_transposition": True,
     }
 
 
