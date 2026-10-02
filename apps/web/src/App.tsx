@@ -2144,6 +2144,8 @@ export function App() {
   const [error, setError] = useState('');
   const [transport, setTransport] = useState<WebSocketTransport | null>(null);
   const reconnectInFlightRef = useRef(false);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const reconnectAttemptRef = useRef(0);
   const [songTitle, setSongTitle] = useState('');
   const [songArtist, setSongArtist] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -2154,6 +2156,31 @@ export function App() {
   const [roundOpen, setRoundOpen] = useState(false);
   const [changingKeyId, setChangingKeyId] = useState<string | null>(null);
   const [webrtcSignals, setWebRtcSignals] = useState<Array<{ id?: string; payload?: { command?: string; data?: WebRtcSignal } }>>([]);
+
+
+  function scheduleReconnect(): void {
+    if (reconnectTimerRef.current !== null) return;
+
+    const saved = getLocalSession();
+    if (!saved || !currentParticipantId) return;
+
+    const attempt = reconnectAttemptRef.current;
+    const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
+    reconnectAttemptRef.current = Math.min(attempt + 1, 6);
+
+    reconnectTimerRef.current = window.setTimeout(() => {
+      reconnectTimerRef.current = null;
+      void reconnectCurrentSession(saved, currentParticipantId);
+    }, delay);
+  }
+
+  function clearReconnectSchedule(): void {
+    if (reconnectTimerRef.current !== null) {
+      window.clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    reconnectAttemptRef.current = 0;
+  }
 
 
   useEffect(() => {
@@ -2227,9 +2254,13 @@ export function App() {
     const participantId = state.hostParticipantId;
 
     socket.subscribeConnection((state, intentional) => {
+      if (state === 'open') {
+        clearReconnectSchedule();
+      }
       if (state === 'close' && !intentional) {
         setConnection('offline');
-        setError('Conexão perdida. Tentaremos reconectar quando a rede voltar.');
+        setError('Conexão perdida. Tentando reconectar automaticamente…');
+        scheduleReconnect();
       }
     });
 
@@ -2241,10 +2272,12 @@ export function App() {
           localStorage.setItem('karaokeai.session.v1', JSON.stringify(incoming));
         }
         setConnection('online');
+        clearReconnectSchedule();
       }
 
       if (message.type === 'participant.joined' || message.type === 'participant.left') {
-        socket.sendRaw('session.state.request', state.sessionId, participantId, null);
+        const currentSessionId = socket.currentSessionId || state.sessionId;
+        socket.sendRaw('session.state.request', currentSessionId, participantId, null);
       }
 
       if (message.type === 'host.disconnected') {
@@ -2295,9 +2328,11 @@ export function App() {
     const socket = new WebSocketTransport(getSignalingUrl());
 
     socket.subscribeConnection((state, intentional) => {
+      if (state === 'open') clearReconnectSchedule();
       if (state === 'close' && !intentional) {
         setConnection('offline');
-        setError('Conexão perdida. Tentaremos reconectar quando a rede voltar.');
+        setError('Conexão perdida. Tentando reconectar automaticamente…');
+        if (getLocalSession()?.sessionId === joinParams.sessionId) scheduleReconnect();
       }
     });
 
@@ -2311,6 +2346,7 @@ export function App() {
           setView(joinParams.tv ? 'tv' : 'participant');
         }
         setConnection('online');
+        clearReconnectSchedule();
       }
 
       if (message.type === 'session.error') {
@@ -2353,8 +2389,10 @@ export function App() {
     const socket = new WebSocketTransport(getSignalingUrl());
 
     socket.subscribeConnection((state, intentional) => {
+      if (state === 'open') clearReconnectSchedule();
       if (state === 'close' && !intentional) {
         setConnection('offline');
+        scheduleReconnect();
       }
     });
 
@@ -2366,6 +2404,7 @@ export function App() {
           localStorage.setItem('karaokeai.session.v1', JSON.stringify(incoming));
         }
         setConnection('online');
+        clearReconnectSchedule();
       }
 
       if (message.type === 'session.error') {
