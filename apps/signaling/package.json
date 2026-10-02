@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx src/serverPartyReadyFixed.ts",
+    "dev": "tsx src/serverPartyReadyV2.ts",
     "build": "tsc",
-    "start": "node dist/serverPartyReadyFixed.js",
+    "start": "node dist/serverPartyReadyV2.js",
     "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
