@@ -22,11 +22,22 @@ type View = 'home' | 'host' | 'join' | 'participant' | 'tv';
 const SIGNALING_PORT = 8787;
 
 function getSignalingUrl(): string {
-  const configured = import.meta.env.VITE_SIGNALING_URL as string | undefined;
-  if (configured) return configured;
-
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${protocol}//${window.location.hostname}:${SIGNALING_PORT}`;
+  const configured = import.meta.env.VITE_SIGNALING_URL as string | undefined;
+  if (!configured) return `${protocol}//${window.location.hostname}:${SIGNALING_PORT}`;
+
+  try {
+    const url = new URL(configured);
+    const localHosts = new Set(['localhost', '127.0.0.1', '::1']);
+    if (localHosts.has(url.hostname) && !localHosts.has(window.location.hostname)) {
+      url.hostname = window.location.hostname;
+      url.protocol = protocol;
+      return url.toString().replace(/\/$/, '');
+    }
+    return configured;
+  } catch {
+    return configured;
+  }
 }
 
 const MUSICAL_KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -2114,9 +2125,11 @@ export function App() {
   const [view, setView] = useState<View>(
     initialJoin ? 'join' : storedSession ? 'host' : 'home'
   );
-  const [session, setSession] = useState<SessionState | null>(storedSession);
+  // A QR/link join must never reuse a session cached on this device.
+  // Otherwise a previous Host session can force the Join screen back into Host mode.
+  const [session, setSession] = useState<SessionState | null>(initialJoin ? null : storedSession);
   const [currentParticipantId, setCurrentParticipantId] = useState(
-    storedSession?.hostParticipantId ?? ''
+    initialJoin ? '' : storedSession?.hostParticipantId ?? ''
   );
   const [name, setName] = useState('');
   const [joinName, setJoinName] = useState('');
