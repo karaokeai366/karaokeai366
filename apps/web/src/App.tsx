@@ -2123,7 +2123,7 @@ export function App() {
   const storedSession = getLocalSession();
 
   const [view, setView] = useState<View>(
-    initialJoin ? 'join' : storedSession ? 'host' : 'home'
+    initialJoin ? 'join' : 'home'
   );
   // A QR/link join must never reuse a session cached on this device.
   // Otherwise a previous Host session can force the Join screen back into Host mode.
@@ -2631,8 +2631,8 @@ export function App() {
   const currentParticipant = session?.participants.find(
     (participant) => participant.id === currentParticipantId
   );
-  const joinUrl = session ? buildJoinUrl(session) : '';
-  const tvJoinUrl = session ? buildTvJoinUrl(session) : '';
+  const joinUrl = view === 'host' && session ? buildJoinUrl(session) : '';
+  const tvJoinUrl = view === 'host' && session ? buildTvJoinUrl(session) : '';
 
   if (view === 'tv' && session) {
     return (
@@ -2646,6 +2646,32 @@ export function App() {
   }
 
   if (view === 'home') {
+    const hasStoredHostSession = Boolean(
+      storedSession
+      && storedSession.hostParticipantId
+      && storedSession.participants.some((participant) => participant.id === storedSession.hostParticipantId)
+    );
+
+    const continueStoredHostSession = async () => {
+      if (!storedSession) return;
+      setSession(storedSession);
+      setCurrentParticipantId(storedSession.hostParticipantId);
+      setView('host');
+      await reconnectStoredHost();
+    };
+
+    const discardStoredHostSession = () => {
+      const confirmed = window.confirm(
+        'Iniciar uma sessão nova?\\n\\nA sessão anterior permanecerá no histórico somente se ela já tiver sido encerrada ou reiniciada pelo Host.'
+      );
+      if (!confirmed) return;
+      localStorage.removeItem('karaokeai.session.v1');
+      setSession(null);
+      setCurrentParticipantId('');
+      setTransport(null);
+      setError('');
+    };
+
     return (
       <main className="app-shell">
         <header className="topbar">
@@ -2656,11 +2682,25 @@ export function App() {
             <span className="eyebrow">MOBILE-FIRST • ANDROID • IOS • TV</span>
             <h1>Seu karaokê.<br />Sua rede.<br /><span>Seu palco.</span></h1>
             <p>O primeiro aparelho cria a sessão e vira o anfitrião. Os demais entram por QR Code e podem contribuir com processamento.</p>
-            <div className="home-actions">
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Seu nome" maxLength={30} onKeyDown={(e) => e.key === 'Enter' && handleCreateSession()} />
-              <button className="primary" onClick={handleCreateSession}>Criar sessão</button>
-              <button className="secondary" onClick={handleJoinPreview}>Entrar em uma sessão</button>
-            </div>
+            {hasStoredHostSession ? (
+              <div className="stored-session-card">
+                <div>
+                  <span className="eyebrow">SESSÃO LOCAL ENCONTRADA</span>
+                  <strong>Continuar como Host</strong>
+                  <small>Sessão: {storedSession!.sessionId.slice(-8).toUpperCase()}</small>
+                </div>
+                <div className="stored-session-actions">
+                  <button className="primary" onClick={() => void continueStoredHostSession()}>Continuar sessão</button>
+                  <button className="secondary" onClick={discardStoredHostSession}>🆕 Nova sessão</button>
+                </div>
+              </div>
+            ) : (
+              <div className="home-actions">
+                <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Seu nome" maxLength={30} onKeyDown={(e) => e.key === 'Enter' && handleCreateSession()} />
+                <button className="primary" onClick={handleCreateSession}>Criar sessão</button>
+                <button className="secondary" onClick={handleJoinPreview}>Entrar em uma sessão</button>
+              </div>
+            )}
             {error && <div className="global-error">{error}</div>}
           </div>
           <div className="hero-card"><div className="glow" /><div className="mini-stage"><span>PRÓXIMA SESSÃO</span><strong>🎵 Comece a festa</strong><small>Host + participantes + TV</small></div></div>
