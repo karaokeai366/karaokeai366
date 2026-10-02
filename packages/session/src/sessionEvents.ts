@@ -18,10 +18,12 @@ export type SessionEventType =
 
 export interface SessionEvent<TPayload = unknown> {
   eventId: string;
+  sequence: number;
   type: SessionEventType;
   sessionId: string;
   timestamp: number;
   actorParticipantId?: string;
+  audience?: SessionEventAudience;
   payload: TPayload;
 }
 
@@ -37,18 +39,20 @@ export function createSessionEvent<TPayload>(
   payload: TPayload,
   options: {
     eventId: string;
+    sequence: number;
     timestamp?: number;
     actorParticipantId?: string;
+    audience?: SessionEventAudience;
   }
 ): SessionEvent<TPayload> {
   return {
     eventId: options.eventId,
+    sequence: options.sequence,
     type,
     sessionId,
     timestamp: options.timestamp ?? Date.now(),
-    ...(options.actorParticipantId
-      ? { actorParticipantId: options.actorParticipantId }
-      : {}),
+    ...(options.actorParticipantId ? { actorParticipantId: options.actorParticipantId } : {}),
+    ...(options.audience ? { audience: options.audience } : {}),
     payload
   };
 }
@@ -58,14 +62,8 @@ export function isEventAudienceMatch(
   audience?: SessionEventAudience
 ): boolean {
   if (!audience) return true;
-  if (audience.participantIds && !audience.participantIds.includes(participant.id)) {
-    return false;
-  }
-  if (audience.roles && !audience.roles.includes(participant.role)) {
-    return false;
-  }
-  if (audience.excludeParticipantIds?.includes(participant.id)) {
-    return false;
-  }
+  if (audience.participantIds && !audience.participantIds.includes(participant.id)) return false;
+  if (audience.roles && !audience.roles.includes(participant.role)) return false;
+  if (audience.excludeParticipantIds?.includes(participant.id)) return false;
   return true;
 }
