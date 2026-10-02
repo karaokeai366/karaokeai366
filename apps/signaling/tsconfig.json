@@ -6,8 +6,9 @@
     "strict": true,
     "skipLibCheck": true,
     "outDir": "dist",
-    "rootDir": "src",
+    "rootDir": "../..",
     "declaration": true
   },
-  "include": ["src"]
+  "include": ["src", "../../packages/session/src"],
+  "exclude": ["src/serverPartyStandalone.ts"]
 }
