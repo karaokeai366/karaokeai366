@@ -2372,11 +2372,6 @@ export function App() {
     }
   }
 
-  async function reconnectStoredHost() {
-    if (!session || session.hostParticipantId !== currentParticipantId) return;
-    await reconnectCurrentSession();
-  }
-
   async function searchMusic() {
     const query = searchQuery.trim();
     if (query.length < 2) {
