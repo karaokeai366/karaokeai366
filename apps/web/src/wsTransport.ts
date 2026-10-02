@@ -43,33 +43,37 @@ export class WebSocketTransport {
       socket.onerror = () => reject(new Error('Não foi possível conectar ao serviço de sessão.'));
       socket.onmessage = (event) => {
         try {
-          const message = JSON.parse(String(event.data)) as RawMessage;
-          this.processIncomingMessage(message);
+          this.processIncomingMessage(JSON.parse(String(event.data)) as RawMessage);
         } catch {
           // Ignore malformed server messages.
         }
       };
       socket.onclose = () => {
         this.socket = null;
-        for (const listener of this.connectionListeners) {
-          listener('close', this.intentionalClose);
-        }
+        for (const listener of this.connectionListeners) listener('close', this.intentionalClose);
       };
     });
   }
 
+  private restoreSnapshot(incoming: SessionState, sequence?: number): void {
+    this.sessionState = incoming;
+    this.sessionId = incoming.sessionId;
+    this.eventCursor = createSessionEventCursor(incoming.sessionId);
+    if (Number.isInteger(sequence) && sequence! >= 0) {
+      this.eventCursor = { ...this.eventCursor, lastSequence: sequence };
+    }
+    this.recoveringSnapshot = false;
+  }
+
   private processIncomingMessage(message: RawMessage): void {
-    if (message.type === 'session.created'
+    if (
+      message.type === 'session.created'
       || message.type === 'session.joined'
       || message.type === 'session.reconnected'
-      || message.type === 'session.state') {
-      const incoming = (message.payload as { state?: SessionState } | undefined)?.state;
-      if (incoming) {
-        this.sessionState = incoming;
-        this.sessionId = incoming.sessionId;
-        this.eventCursor = createSessionEventCursor(incoming.sessionId);
-        this.recoveringSnapshot = false;
-      }
+      || message.type === 'session.state'
+    ) {
+      const payload = message.payload as { state?: SessionState; sequence?: number } | undefined;
+      if (payload?.state) this.restoreSnapshot(payload.state, payload.sequence);
     }
 
     if (message.type === 'session.event' && message.payload) {
@@ -100,7 +104,6 @@ export class WebSocketTransport {
           });
           return;
         }
-
         return;
       }
     }
@@ -119,29 +122,17 @@ export class WebSocketTransport {
   }
 
   send(message: Envelope): void {
-    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
-      throw new Error('Transporte WebSocket desconectado.');
-    }
-
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) throw new Error('Transporte WebSocket desconectado.');
     this.sessionId = message.sessionId;
     this.senderId = message.senderId;
     this.socket.send(JSON.stringify(message));
   }
 
   sendRaw(type: string, sessionId: string, senderId: string, payload: unknown): void {
-    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
-      throw new Error('Transporte WebSocket desconectado.');
-    }
-
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) throw new Error('Transporte WebSocket desconectado.');
     this.sessionId = sessionId;
     this.senderId = senderId;
-    this.socket.send(JSON.stringify({
-      type,
-      sessionId,
-      senderId,
-      payload,
-      timestamp: Date.now()
-    }));
+    this.socket.send(JSON.stringify({ type, sessionId, senderId, payload, timestamp: Date.now() }));
   }
 
   subscribe(handler: (message: RawMessage) => void): () => void {
