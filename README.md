@@ -1,6 +1,6 @@
 # KaraokeAI 🎤
 
-KaraokeAI is a distributed, local-first karaoke platform designed to run first as a **React + TypeScript + Vite/PWA client** on phones and Smart TVs, with the architecture prepared for native Android/iOS wrappers later.
+KaraokeAI is a distributed, local-first karaoke platform designed to run first as a **React + TypeScript + Vite/PWA client** on phones and Smart TVs. The same `apps/web` application currently provides the Host, participant and TV roles; native Android/iOS wrappers remain future targets.
 
 The core idea is simple: **the Host coordinates the party, the TV is the visual stage, and participant phones contribute microphone capture and media processing when needed.**
 
@@ -8,37 +8,40 @@ The core idea is simple: **the Host coordinates the party, the TV is the visual 
 
 The repository currently has one runnable frontend application: `apps/web`. It can operate as **Host, participant, or TV** through the same PWA codebase. `apps/mobile` and `apps/tv` are architectural targets, not separate runnable applications yet.
 
-The signaling server is now party-oriented and supports the complete session lifecycle exposed by the protocol. The web client contains the corresponding typed command facade, incremental-event reducer/cursor, queue/media preparation, scoring, restart and WebRTC foundations. The remaining work is UI/UX completion and real-device validation of every flow; this README intentionally does not claim that those flows have already been field-tested.
+The party signaling server, shared protocol and web client are aligned around the same session model. CI now checks compilation plus an end-to-end signaling smoke test covering host creation, participant/TV join, queue insertion, preparation, singer selection, performance start/finish and scoring.
 
-## What the server exposes and what the web client supports
+Real-device validation is still a separate stage: browser permissions, WebRTC behavior, TV playback, media assets, Wi-Fi conditions and 10/20/30/50-device load must be exercised on actual hardware before production use.
 
-| Capability | Signaling server | Web/PWA client |
+## Server ↔ Web parity
+
+| Capability | Signaling | Web/PWA |
 |---|---:|---:|
 | Create/join/reconnect session | ✅ | ✅ |
 | Snapshot synchronization/recovery | ✅ | ✅ |
 | Ordered incremental `session.event` | ✅ | ✅ |
+| Sequence-gap recovery | ✅ | ✅ |
 | Participant join/leave/update | ✅ | ✅ |
-| Capacity 2–100, default 50 | ✅ | ✅ state + validation |
+| Capacity 2–100, default 50 | ✅ | ✅ state + commands |
 | TV excluded from participant capacity | ✅ | ✅ |
 | Host transfer | ✅ | ✅ command facade + state |
 | Host recovery/claim | ✅ | ✅ command facade + state |
 | Shared queue | ✅ | ✅ |
 | Per-participant queue limit | ✅ default 3 | ✅ server-enforced + state |
 | Queue add/remove/update | ✅ | ✅ |
-| Deterministic fair next singer | ✅ | ✅ state consumption |
+| Deterministic fair next singer | ✅ | ✅ local state consumption; server remains authoritative |
 | Automatic queue advancement | ✅ | ✅ state consumption |
 | Song preparation progress | ✅ | ✅ |
-| Key/original/selected key | ✅ | ✅ |
+| Original/selected key | ✅ | ✅ |
 | Playback pause/resume/skip/end | ✅ | ✅ command facade + state |
-| Performance start/pause/resume/end | ✅ | ✅ incremental events |
-| Restart before 50% with credits | ✅ | ✅ policy + UI foundation |
+| Performance start/pause/resume/end | ✅ | ✅ event reducer/state |
+| Restart before 50% with credits | ✅ | ✅ policy/UI foundation |
 | Performance scoring | ✅ | ✅ scoring engine + submission |
 | Round modes (`open` / fixed songs) | ✅ | ✅ state + command facade |
 | Round completion | ✅ | ✅ state consumption |
-| WebRTC microphone foundation | ✅ signaling support | ✅ browser foundation |
+| WebRTC microphone foundation | ✅ signaling | ✅ browser foundation |
 | Pitch detection/scoring | — | ✅ |
 | Automatic key suggestion | — | ✅ |
-| TV visual-stage role | ✅ session role | ✅ same web app |
+| TV visual-stage role | ✅ | ✅ same web app |
 
 ## Party-scale rules
 
@@ -181,7 +184,7 @@ MAX_SONGS_PER_PARTICIPANT=3
 LEGACY_SNAPSHOT_BROADCAST=true
 ```
 
-The signaling service runs `src/serverPartyReady.ts` by default.
+The signaling service runs `src/serverPartyReadyFixed.ts` by default.
 
 ## Local development
 
@@ -205,7 +208,20 @@ The web client defaults to WebSocket port `8787`. Use `VITE_SIGNALING_URL` to po
 
 The media worker has its own Python environment and compile check. See `apps/media-worker/` for its current runtime instructions.
 
-## Recommended test progression
+## Automated smoke test
+
+The signaling application includes an end-to-end smoke test:
+
+```bash
+npm --prefix apps/signaling run build
+npm --prefix apps/signaling run dev
+# in another terminal
+npm --prefix apps/signaling run smoke
+```
+
+The CI workflow starts the built signaling server and runs the smoke test automatically. It verifies the core party path without requiring physical devices.
+
+## Recommended real-device test progression
 
 Do not jump directly to 50 phones. Validate the complete flow progressively:
 
@@ -244,7 +260,7 @@ At each level validate:
 
 ## CI/build gate
 
-Every implementation change must pass all three repository checks before being treated as complete:
+Every implementation change must pass all repository checks before being treated as complete:
 
 ```text
 web
@@ -252,29 +268,11 @@ web
  └─ npm run build
 
 signaling
- └─ npm run build
+ ├─ npm run build
+ └─ npm run smoke
 
 media-worker
  └─ python -m compileall -q src
 ```
 
-A green build is necessary but not sufficient for declaring the product functionally ready: real-device WebSocket/WebRTC/media tests are still required.
-
-## Architecture documentation
-
-Key documents:
-
-- `docs/architecture/multi-participant-scale.md`
-- `docs/architecture/session-events.md`
-- `docs/architecture/session-scale-implementation.md`
-- `docs/architecture/party-queue.md`
-
-## Legal/operational boundary
-
-The repository contains application and processing code, not copyrighted music libraries. Any external media integration must respect the applicable rights, terms and licenses.
-
-## Current milestone
-
-**Party-scale foundation → integration and functional validation.**
-
-The server and shared protocol now model the full party lifecycle. The web/PWA client is being brought into parity with those server capabilities. The next milestone is a green CI run for the current integration, followed by end-to-end testing at increasing participant counts. Only after those tests pass should legacy full-snapshot broadcasting be disabled.
+The smoke test is intentionally independent of browser UI so a green CI result means the signaling protocol is executable, not merely type-correct.
