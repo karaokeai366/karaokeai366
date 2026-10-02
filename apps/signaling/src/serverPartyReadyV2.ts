@@ -4,7 +4,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 type Role = 'host' | 'participant' | 'tv';
 type Client = { socket: WebSocket; sessionId: string; participantId: string; role: Role };
 type Message = { type?: string; sessionId?: string; senderId?: string; payload?: any };
-type Session = { id: string; hostId: string; state: any; clients: Map<string, Client>; sequence: number };
+type Session = { id: string; hostId: string; state: any; clients: Map<string, Client>; sequence: number; hostDisconnectedAt?: number };
 type EventType = 'participant.joined' | 'participant.left' | 'participant.updated' | 'host.changed' | 'queue.added' | 'queue.updated' | 'queue.removed' | 'queue.next' | 'singer.called' | 'performance.started' | 'performance.paused' | 'performance.resumed' | 'performance.finished' | 'performance.scored' | 'round.updated' | 'session.settings.changed';
 
 const port = Number(process.env.PORT ?? 8787);
@@ -92,6 +92,27 @@ wss.on('connection', ws => {
 
     if (m.type === 'session.create') {
       if (sessions.has(m.sessionId)) return fail(ws, 'A sessão já existe.');
+
+      // A criação de uma nova sessão reutiliza o WebSocket atual. Antes de
+      // associá-lo à nova sessão, retire-o completamente da sessão anterior;
+      // caso contrário o mesmo socket fica registrado em duas sessões e os
+      // eventos antigos podem contaminar a nova sessão.
+      const previousClient = sockets.get(ws);
+      if (previousClient) {
+        const previousSession = sessions.get(previousClient.sessionId);
+        if (previousSession) {
+          const previousParticipant = person(previousSession, previousClient.participantId);
+          if (previousParticipant) previousParticipant.online = false;
+          previousSession.clients.delete(previousClient.participantId);
+          if (previousParticipant) {
+            emit(previousSession, 'participant.left', {
+              participantId: previousClient.participantId,
+              participant: previousParticipant
+            }, previousClient.participantId);
+          }
+        }
+        sockets.delete(ws);
+      }
       const state = initialState(m.payload?.state, m.sessionId, m.senderId);
       let host = state.participants.find((p: any) => p.id === m.senderId);
       if (host) { host.role = 'host'; host.online = true; } else state.participants.unshift({ id: m.senderId, name: String(m.payload?.name ?? 'Host').slice(0, 30), role: 'host', joinedAt: Date.now(), capabilities: m.payload?.capabilities ?? {}, online: true });
@@ -118,7 +139,13 @@ wss.on('connection', ws => {
 
     if (m.type === 'session.reconnect') {
       if (!s) return fail(ws, 'Sessão não encontrada.'); const p = person(s, m.senderId); if (!p) return fail(ws, 'Participante não encontrado.');
-      const old = s.clients.get(m.senderId); if (old) { try { old.socket.close(); } catch {} }
+      const old = s.clients.get(m.senderId); if (old && old.socket !== ws) { try { old.socket.close(); } catch {} }
+      const isOriginalHost = m.senderId === s.hostId;
+      if (isOriginalHost) {
+        p.role = 'host';
+        s.hostDisconnectedAt = undefined;
+        s.state.hostParticipantId = s.hostId;
+      }
       p.online = true; const nc: Client = { socket: ws, sessionId: s.id, participantId: m.senderId, role: p.role }; s.clients.set(m.senderId, nc); sockets.set(ws, nc);
       send(ws, 'session.reconnected', { sessionId: s.id, hostParticipantId: s.hostId, ...snapshot(s) }); return emit(s, 'participant.updated', { participant: p }, m.senderId);
     }
@@ -202,6 +229,11 @@ wss.on('connection', ws => {
       }
       case 'host.claim': {
         const p = person(s,c.participantId); const host = person(s,s.hostId); if (!p || p.role === 'tv') return fail(ws,'Participante inválido.'); if (host?.online !== false) return fail(ws,'O Host atual ainda está conectado.');
+        // Uma queda curta de Wi-Fi/rede não deve trocar o anfitrião. Dê ao
+        // Host original uma janela para reconectar antes de permitir takeover.
+        if (s.hostDisconnectedAt && Date.now() - s.hostDisconnectedAt < 30000) {
+          return fail(ws,'O Host está temporariamente desconectado. Aguarde a reconexão antes de assumir o Host.');
+        }
         if (host) host.role = 'participant'; p.role = 'host'; p.online = true; s.hostId = p.id; s.state.hostParticipantId = p.id; changed(s,'host.changed',{hostParticipantId:p.id,state:{hostParticipantId:p.id}},p.id); break;
       }
       case 'round.configure': {
@@ -218,7 +250,10 @@ wss.on('connection', ws => {
   });
   ws.on('close', () => {
     const c = sockets.get(ws); if (!c) return; sockets.delete(ws); const s = sessions.get(c.sessionId); if (!s) return; const p = person(s,c.participantId); if (p) p.online = false; s.clients.delete(c.participantId);
-    if (c.participantId === s.hostId) { for (const client of s.clients.values()) send(client.socket,'host.disconnected',{participantId:c.participantId}); }
+    if (c.participantId === s.hostId) {
+      s.hostDisconnectedAt = Date.now();
+      for (const client of s.clients.values()) send(client.socket,'host.disconnected',{participantId:c.participantId});
+    }
     if (p) emit(s,'participant.left',{participantId:c.participantId,participant:p},c.participantId);
   });
 });
