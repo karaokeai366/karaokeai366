@@ -1,6 +1,22 @@
 # Session event protocol
 
-The signaling layer currently sends `session.state` snapshots for compatibility. The next transport evolution uses domain events so clients can process only the changes relevant to them.
+KaraokeAI keeps a complete `session.state` snapshot for initial synchronization and recovery, while normal mutations can be represented as incremental `session.event` messages.
+
+## Event flow
+
+```text
+client connects/reconnects
+        |
+        v
+  full session.state
+        |
+        +---- event 101 ---->
+        +---- event 102 ---->
+        +---- event 103 ---->
+        |
+        v
+  local event reducer
+```
 
 ## Event categories
 
@@ -28,6 +44,10 @@ The signaling layer currently sends `session.state` snapshots for compatibility.
 - `round.updated`
 - `session.settings.changed`
 
+## Why snapshots and events coexist
+
+Snapshots are the recovery boundary. Events are the efficient steady-state transport. This avoids requiring a client to receive every event since the session began and allows reconnect to restore a consistent state without replaying an unbounded event log.
+
 ## Migration rule
 
 `session.state` remains available while clients migrate. New high-frequency flows should publish a small event payload first; a full state request is used only for initial synchronization, reconnect, recovery, or when a client detects an event gap.
@@ -39,3 +59,9 @@ Every event has a unique `eventId` and timestamp. Clients should retain the last
 Events may be broadcast to all connected clients, restricted to selected participant IDs, or restricted by role. This is important for party scale: a singer-specific preparation update should not force every phone to process the same payload.
 
 The TV remains a first-class role and is not counted as a participant capacity slot.
+
+## Current implementation boundary
+
+`packages/session/src/sessionEvents.ts` defines the transport-neutral event contract. `apps/signaling/src/sessionEventTransport.ts` emits targeted events, and `packages/session/src/applySessionEvent.ts` applies supported incremental events to a local snapshot.
+
+The signaling server still uses full snapshots for several mutations. The next integration step is to emit incremental events alongside those snapshots, validate both paths, and only then remove full broadcasts from high-frequency mutations.
