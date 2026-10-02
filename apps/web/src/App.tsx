@@ -2872,7 +2872,13 @@ export function App() {
     <main className="app-shell">
       <header className="topbar">
         <div className="brand"><span className="brand-mark">🎤</span><div><strong>KaraokeAI</strong><small>host</small></div></div>
-        {session && <div className="session-pill"><span className="status-dot" />{connection === 'online' ? 'CONECTADO' : session.sessionId.slice(-8).toUpperCase()}</div>}
+        {session && (
+          <div className="session-pill" title="Código da sessão">
+            <span className="status-dot" />
+            <span>SESSÃO {session.sessionId.slice(-8).toUpperCase()}</span>
+            <small>{connection === 'online' ? 'CONECTADO' : connection.toUpperCase()}</small>
+          </div>
+        )}
       </header>
 
       <section className="dashboard">
