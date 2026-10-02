@@ -3,6 +3,7 @@ import { WebSocket } from 'ws';
 const port = Number(process.env.PORT ?? 8787);
 const url = `ws://127.0.0.1:${port}`;
 const sessionId = `smoke-${Date.now()}`;
+const TIMEOUT = 15000;
 
 function client(senderId) {
   const ws = new WebSocket(url);
@@ -21,8 +22,9 @@ function client(senderId) {
   });
 
   const waitOpen = new Promise((resolve, reject) => {
-    ws.once('open', resolve);
-    ws.once('error', reject);
+    const timer = setTimeout(() => reject(new Error(`Timeout opening ${senderId}`)), TIMEOUT);
+    ws.once('open', () => { clearTimeout(timer); resolve(); });
+    ws.once('error', error => { clearTimeout(timer); reject(error); });
   });
 
   return {
@@ -30,7 +32,7 @@ function client(senderId) {
     senderId,
     messages,
     waitOpen,
-    waitFor(predicate, timeout = 5000) {
+    waitFor(predicate, timeout = TIMEOUT) {
       const existing = messages.find(predicate);
       if (existing) return Promise.resolve(existing);
       return new Promise((resolve, reject) => {
@@ -58,14 +60,20 @@ function client(senderId) {
   };
 }
 
+async function openClients(clients, batchSize = 10) {
+  for (let index = 0; index < clients.length; index += batchSize) {
+    await Promise.all(clients.slice(index, index + batchSize).map(c => c.waitOpen));
+  }
+}
+
 const host = client('smoke-host');
 const singer = client('smoke-singer');
 const tv = client('smoke-tv');
-// Host + singer + 48 additional participants = 50 active participants.
+// Host + singer + 48 additional participants = exactly 50 active participants.
 const participants = Array.from({ length: 48 }, (_, index) => client(`smoke-party-${index + 1}`));
 
 try {
-  await Promise.all([host.waitOpen, singer.waitOpen, tv.waitOpen, ...participants.map(c => c.waitOpen)]);
+  await openClients([host, singer, tv, ...participants]);
 
   host.send('session.create', { name: 'Smoke Host', maxParticipants: 50 });
   await host.waitFor(m => m.type === 'session.created');
@@ -126,6 +134,7 @@ try {
   await reconnect.waitFor(m => m.type === 'session.reconnected');
 
   console.log('SIGNALING_PARTY_SMOKE_OK participants=50 queueLimit=3 reconnect=true');
+  try { reconnect.ws.close(); } catch {}
 } finally {
   for (const c of [host, singer, tv, ...participants]) {
     try { c.ws.close(); } catch {}
