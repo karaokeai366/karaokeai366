@@ -38,33 +38,32 @@ interface MediaSearchResponse {
   has_more: boolean;
 }
 
-export interface SongSearchPage {
-  results: SongSearchResult[];
+export type SongSearchPage = SongSearchResult[] & {
   page: number;
   pageSize: number;
   hasMore: boolean;
-}
+};
 
 export async function searchSongs(query: string, page = 1, pageSize = 20): Promise<SongSearchPage> {
   const params = new URLSearchParams({ q: query.trim(), page: String(page), limit: String(pageSize) });
   const response = await request<MediaSearchResponse>(`/search?${params.toString()}`);
 
-  return {
-    results: response.results.map((result) => ({
-      sourceId: result.source_id,
-      source: result.source,
-      title: result.title,
-      artist: result.artist ?? undefined,
-      album: result.album ?? undefined,
-      channelName: result.channel_name ?? undefined,
-      durationSeconds: result.duration_seconds ?? undefined,
-      thumbnailUrl: result.thumbnail_url ?? undefined,
-      sourceUrl: result.source_url
-    })),
-    page: response.page,
-    pageSize: response.page_size,
-    hasMore: response.has_more
-  };
+  const results = response.results.map((result) => ({
+    sourceId: result.source_id,
+    source: result.source,
+    title: result.title,
+    artist: result.artist ?? undefined,
+    album: result.album ?? undefined,
+    channelName: result.channel_name ?? undefined,
+    durationSeconds: result.duration_seconds ?? undefined,
+    thumbnailUrl: result.thumbnail_url ?? undefined,
+    sourceUrl: result.source_url
+  })) as SongSearchPage;
+
+  results.page = response.page;
+  results.pageSize = response.page_size;
+  results.hasMore = response.has_more;
+  return results;
 }
 
 export interface MediaPrepareJob {
