@@ -306,6 +306,9 @@ function injectHostSessionControls(transport: WebSocketTransport): void {
           capabilities: host.capabilities
         });
         localStorage.setItem(SESSION_KEY, JSON.stringify(nextState));
+        // Atualiza o React imediatamente. O snapshot session.created do servidor
+        // chega em seguida e confirma o mesmo estado, sem depender de reload.
+        window.dispatchEvent(new CustomEvent('karaokeai.session.created', { detail: nextState }));
         // Keep the current page and socket alive. The server responds with
         // session.created, and App.tsx updates the React state/QR from that snapshot.
         // Reloading here could race with the new session and briefly restore the old one.
