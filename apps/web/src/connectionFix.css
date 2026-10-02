@@ -1,0 +1,4 @@
+.connection-badge.offline + .reconnect-button,
+.connection-badge.connecting + .reconnect-button {
+  display: none;
+}
