@@ -2170,6 +2170,21 @@ export function App() {
   }, [session?.hostParticipantId, session?.participants, currentParticipantId, view]);
 
   useEffect(() => {
+    const handleSessionCreated = (event: Event) => {
+      const nextSession = (event as CustomEvent<SessionState>).detail;
+      if (!nextSession?.sessionId || !nextSession.hostParticipantId) return;
+      setSession(nextSession);
+      setCurrentParticipantId(nextSession.hostParticipantId);
+      setView('host');
+      setConnection('online');
+      setError('');
+    };
+
+    window.addEventListener('karaokeai.session.created', handleSessionCreated);
+    return () => window.removeEventListener('karaokeai.session.created', handleSessionCreated);
+  }, []);
+
+  useEffect(() => {
     if (!transport) return;
     return transport.subscribe((message) => {
       if (!message.id) return;
