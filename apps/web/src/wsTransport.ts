@@ -382,6 +382,10 @@ export class WebSocketTransport {
     return this.senderId;
   }
 
+  get currentSessionId(): string {
+    return this.sessionId;
+  }
+
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       this.intentionalClose = false;
