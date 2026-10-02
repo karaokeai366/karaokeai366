@@ -492,6 +492,9 @@ export class WebSocketTransport {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) throw new Error('Transporte WebSocket desconectado.');
     this.sessionId = sessionId;
     this.senderId = senderId;
+    // Make Host controls available as soon as the Host sends its first command,
+    // even before the server snapshot arrives.
+    injectHostSessionControls(this);
     this.socket.send(JSON.stringify({ type, sessionId, senderId, payload, timestamp: Date.now() }));
   }
 
