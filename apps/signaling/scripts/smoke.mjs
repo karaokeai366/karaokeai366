@@ -61,7 +61,8 @@ function client(senderId) {
 const host = client('smoke-host');
 const singer = client('smoke-singer');
 const tv = client('smoke-tv');
-const participants = Array.from({ length: 50 }, (_, index) => client(`smoke-party-${index + 1}`));
+// Host + singer + 48 additional participants = 50 active participants.
+const participants = Array.from({ length: 48 }, (_, index) => client(`smoke-party-${index + 1}`));
 
 try {
   await Promise.all([host.waitOpen, singer.waitOpen, tv.waitOpen, ...participants.map(c => c.waitOpen)]);
@@ -116,7 +117,7 @@ try {
   });
   await first.waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.scored');
 
-  const lastParticipant = participants[49];
+  const lastParticipant = participants[47];
   lastParticipant.ws.close();
   await new Promise(resolve => setTimeout(resolve, 100));
   const reconnect = client(lastParticipant.senderId);
