@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx src/serverPartyStandalone.ts",
+    "dev": "tsx src/serverParty.ts",
     "build": "tsc",
-    "start": "node dist/serverPartyStandalone.js"
+    "start": "node dist/apps/signaling/src/serverParty.js"
   },
   "dependencies": {
     "ws": "^8.22.0"
