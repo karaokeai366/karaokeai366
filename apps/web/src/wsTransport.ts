@@ -306,8 +306,9 @@ function injectHostSessionControls(transport: WebSocketTransport): void {
           capabilities: host.capabilities
         });
         localStorage.setItem(SESSION_KEY, JSON.stringify(nextState));
-        window.alert('Nova sessão iniciada. Os resultados da sessão anterior estão em 🏆 Resultados. O QR Code será atualizado.');
-        window.location.reload();
+        // Keep the current page and socket alive. The server responds with
+        // session.created, and App.tsx updates the React state/QR from that snapshot.
+        // Reloading here could race with the new session and briefly restore the old one.
       } catch {
         window.alert('Não foi possível iniciar a nova sessão porque a conexão com o servidor foi perdida.');
       }
