@@ -2519,7 +2519,7 @@ export function App() {
         artist: entry.artist,
         sourceUrl: entry.sourceUrl,
         thumbnailUrl: entry.thumbnailUrl
-      }, 'video');
+      }, 'audio');
 
       let finished = false;
       while (!finished) {
