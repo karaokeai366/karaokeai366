@@ -32,7 +32,7 @@ jobs:
           node-version: 24
       - run: npm install
       - run: npm run build
-      - run: node dist/serverPartyReadyFixed.js > /tmp/karaokeai-signaling.log 2>&1 &
+      - run: node dist/serverPartyReadyV2.js > /tmp/karaokeai-signaling.log 2>&1 &
       - run: sleep 1
       - run: npm run smoke
 
