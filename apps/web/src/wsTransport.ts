@@ -17,6 +17,145 @@ type RawMessage = {
   payload?: unknown;
 };
 
+const SESSION_KEY = 'karaokeai.session.v1';
+const HOST_CONTROLS_ID = 'karaokeai-host-session-controls';
+
+function readStoredSession(): SessionState | null {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    return raw ? JSON.parse(raw) as SessionState : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearStoredSession(): void {
+  localStorage.removeItem(SESSION_KEY);
+}
+
+function createRoundId(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return `round-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function injectHostSessionControls(transport: WebSocketTransport): void {
+  const install = () => {
+    const stored = readStoredSession();
+    if (!stored || stored.hostParticipantId !== transport.senderId) {
+      document.getElementById(HOST_CONTROLS_ID)?.remove();
+      return;
+    }
+
+    if (document.getElementById(HOST_CONTROLS_ID)) return;
+
+    const wrapper = document.createElement('div');
+    wrapper.id = HOST_CONTROLS_ID;
+    wrapper.style.cssText = [
+      'display:flex',
+      'gap:8px',
+      'align-items:center',
+      'flex-wrap:wrap',
+      'margin-top:12px',
+      'padding:10px 12px',
+      'border:1px solid rgba(255,255,255,.10)',
+      'border-radius:14px',
+      'background:rgba(255,255,255,.035)'
+    ].join(';');
+
+    const label = document.createElement('span');
+    label.textContent = '⚙️ Sessão';
+    label.style.cssText = 'font-size:12px;font-weight:700;opacity:.75;margin-right:2px';
+
+    const newSessionButton = document.createElement('button');
+    newSessionButton.type = 'button';
+    newSessionButton.textContent = '🆕 Nova sessão';
+    newSessionButton.style.cssText = 'border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:8px 11px;background:rgba(255,255,255,.06);color:inherit;cursor:pointer;font-weight:700';
+
+    const endButton = document.createElement('button');
+    endButton.type = 'button';
+    endButton.textContent = '🔴 Encerrar sessão';
+    endButton.style.cssText = 'border:1px solid rgba(255,90,90,.35);border-radius:10px;padding:8px 11px;background:rgba(255,70,70,.10);color:inherit;cursor:pointer;font-weight:700';
+
+    newSessionButton.onclick = () => {
+      const current = readStoredSession();
+      if (!current || current.hostParticipantId !== transport.senderId) return;
+
+      const confirmed = window.confirm(
+        'Iniciar uma nova sessão?\n\nA fila, a música em reprodução e os participantes conectados serão limpos. Os celulares precisarão entrar novamente pelo QR Code.\n\nEsta ação não pode ser desfeita.'
+      );
+      if (!confirmed) return;
+
+      const host = current.participants.find((participant) => participant.id === current.hostParticipantId);
+      if (!host) return;
+
+      const nextState: SessionState = {
+        ...current,
+        createdAt: Date.now(),
+        participants: [{ ...host, role: 'host', online: true, joinedAt: Date.now() }],
+        queue: [],
+        queueSize: 0,
+        roundId: createRoundId(),
+        roundResultsByParticipant: {},
+        restartCreditsByParticipant: { [host.id]: 1 },
+        status: 'lobby'
+      };
+
+      try {
+        transport.sendRaw('session.state.set', current.sessionId, transport.senderId, { state: nextState });
+        localStorage.setItem(SESSION_KEY, JSON.stringify(nextState));
+      } catch {
+        window.alert('Não foi possível iniciar a nova sessão porque a conexão com o servidor foi perdida.');
+      }
+    };
+
+    endButton.onclick = () => {
+      const current = readStoredSession();
+      if (!current || current.hostParticipantId !== transport.senderId) return;
+
+      const confirmation = window.prompt(
+        'Encerrar a sessão apagará a fila, desconectará os participantes e encerrará o palco.\n\nPara confirmar, digite ENCERRAR:'
+      );
+      if (confirmation !== 'ENCERRAR') return;
+
+      const host = current.participants.find((participant) => participant.id === current.hostParticipantId);
+      if (!host) return;
+
+      const endedState: SessionState = {
+        ...current,
+        participants: [{ ...host, role: 'host', online: true }],
+        queue: [],
+        queueSize: 0,
+        roundResultsByParticipant: {},
+        restartCreditsByParticipant: { [host.id]: 0 },
+        status: 'finished'
+      };
+
+      try {
+        transport.sendRaw('session.state.set', current.sessionId, transport.senderId, { state: endedState });
+        clearStoredSession();
+        window.setTimeout(() => {
+          transport.disconnect();
+          window.location.href = window.location.origin + '/';
+        }, 250);
+      } catch {
+        window.alert('Não foi possível encerrar a sessão porque a conexão com o servidor foi perdida.');
+      }
+    };
+
+    wrapper.append(label, newSessionButton, endButton);
+
+    const target = document.querySelector('.welcome .tv-link-box')?.parentElement
+      ?? document.querySelector('.welcome');
+    if (target) target.appendChild(wrapper);
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', install, { once: true });
+  } else {
+    window.setTimeout(install, 0);
+  }
+}
+
 export class WebSocketTransport {
   private socket: WebSocket | null = null;
   private intentionalClose = false;
@@ -37,6 +176,7 @@ export class WebSocketTransport {
       this.socket = socket;
 
       socket.onopen = () => {
+        injectHostSessionControls(this);
         for (const listener of this.connectionListeners) listener('open', false);
         resolve();
       };
@@ -50,6 +190,7 @@ export class WebSocketTransport {
       };
       socket.onclose = () => {
         this.socket = null;
+        document.getElementById(HOST_CONTROLS_ID)?.remove();
         for (const listener of this.connectionListeners) listener('close', this.intentionalClose);
       };
     });
@@ -63,6 +204,15 @@ export class WebSocketTransport {
       this.eventCursor = { ...this.eventCursor, lastSequence: sequence };
     }
     this.recoveringSnapshot = false;
+
+    if (incoming.status === 'finished' && this.senderId && !incoming.participants.some((participant) => participant.id === this.senderId)) {
+      clearStoredSession();
+      window.setTimeout(() => {
+        window.location.href = window.location.origin + '/';
+      }, 150);
+    }
+
+    injectHostSessionControls(this);
   }
 
   private processIncomingMessage(message: RawMessage): void {
@@ -119,6 +269,7 @@ export class WebSocketTransport {
     this.intentionalClose = true;
     this.socket?.close();
     this.socket = null;
+    document.getElementById(HOST_CONTROLS_ID)?.remove();
   }
 
   send(message: Envelope): void {
