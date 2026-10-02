@@ -378,3 +378,52 @@ button { border: 0; border-radius: 14px; min-height: 48px; padding: 0 18px; colo
   .stored-session-actions { justify-content: stretch; }
   .stored-session-actions button { flex: 1; }
 }
+
+
+/* Mobile hardening: some Android browsers can expose a desktop-like viewport
+   while still being a touch device. Keep the compact layout in that case too. */
+@media (hover: none) and (pointer: coarse), (max-width: 760px) {
+  html, body { width: 100%; max-width: 100%; overflow-x: hidden; }
+  .app-shell { width: 100%; max-width: 100%; padding: 0 12px 28px; }
+  .topbar { width: 100%; height: 64px; }
+  .brand { min-width: 0; }
+  .brand strong { font-size: 16px; }
+  .brand small { font-size: 9px; }
+  .hero, .dashboard { width: 100%; max-width: 100%; margin-top: 18px; grid-template-columns: 1fr; }
+  .hero-card { min-height: 220px; border-radius: 22px; }
+  .hero h1 { font-size: clamp(38px, 12vw, 58px); }
+  .hero p { font-size: 15px; }
+  .panel { width: 100%; max-width: 100%; padding: 17px; border-radius: 18px; }
+  .welcome { flex-direction: column; align-items: stretch; min-height: 0; }
+  .qr-wrap { flex: 0 1 auto; width: min(245px, 100%); align-self: center; }
+  .qr-wrap svg { width: min(210px, 100%) !important; height: auto !important; }
+  .stats-grid { grid-template-columns: 1fr; gap: 10px; }
+  .stat-card { padding: 16px; }
+  .stat-card strong { font-size: 27px; }
+  .song-form { grid-template-columns: 1fr; }
+  .search-box { grid-template-columns: 1fr; }
+  .search-results-heading { align-items: flex-start; flex-direction: column; }
+  .search-result { grid-template-columns: 68px minmax(0, 1fr); gap: 10px; }
+  .result-thumb { width: 68px; }
+  .result-actions { grid-column: 2; justify-content: flex-start; flex-wrap: wrap; }
+  .queue-row { grid-template-columns: 22px 32px minmax(0, 1fr) auto; gap: 7px; padding: 9px 2px; }
+  .queue-info strong, .queue-info small { white-space: normal; }
+  .queue-preparation { min-width: 0; max-width: 100%; }
+  .queue-status { font-size: 9px; }
+  .people-list { width: 100%; }
+  .person-row { grid-template-columns: 36px minmax(0, 1fr); gap: 9px; }
+  .avatar { width: 36px; height: 36px; border-radius: 11px; }
+  .capability { grid-column: 2; text-align: left; }
+  .transfer-host-button { margin-left: 0; }
+  .stage-control-actions { grid-template-columns: 1fr 1fr; }
+  .round-options { grid-template-columns: 1fr; }
+  .tone-actions { justify-content: flex-start; }
+  .microphone-panel, .tone-suggestion, .tone-applied, .auto-advance-panel, .next-host-panel, .host-recovery-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .session-pill { display: none; }
+  .stored-session-card { align-items: stretch; flex-direction: column; }
+  .stored-session-actions { justify-content: stretch; }
+  .stored-session-actions button { flex: 1; }
+}
