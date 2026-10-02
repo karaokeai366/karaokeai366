@@ -757,12 +757,19 @@ function QueueList({
             </div>
             {entry.requestedKey && <span className="queue-key">Tom {entry.requestedKey}</span>}
             {entry.sourceUrl && entry.status === 'queued' && (
-              <button
-                className="queue-prepare"
-                onClick={() => onPrepare(entry.id, entry)}
-              >
-                Preparar
-              </button>
+              <div className="queue-prepare-area">
+                {entry.preparationStage === 'error' && entry.preparationMessage && (
+                  <small className="queue-preparation-error" title={entry.preparationMessage}>
+                    ⚠️ {entry.preparationMessage}
+                  </small>
+                )}
+                <button
+                  className="queue-prepare"
+                  onClick={() => onPrepare(entry.id, entry)}
+                >
+                  {entry.preparationStage === 'error' ? '↻ Repetir preparação' : 'Preparar'}
+                </button>
+              </div>
             )}
             {entry.status === 'preparing' && (
               <div className="queue-preparation">
