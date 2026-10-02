@@ -1,7 +1,7 @@
 export interface SessionEventCursor {
   sessionId: string;
   lastEventId?: string;
-  lastTimestamp?: number;
+  lastSequence?: number;
 }
 
 export function createSessionEventCursor(sessionId: string): SessionEventCursor {
@@ -10,28 +10,29 @@ export function createSessionEventCursor(sessionId: string): SessionEventCursor 
 
 export function shouldProcessSessionEvent(
   cursor: SessionEventCursor,
-  event: { eventId: string; sessionId: string; timestamp: number }
+  event: { eventId: string; sessionId: string; sequence: number }
 ): boolean {
   if (event.sessionId !== cursor.sessionId) return false;
   if (event.eventId === cursor.lastEventId) return false;
-
-  if (
-    cursor.lastTimestamp !== undefined
-    && event.timestamp < cursor.lastTimestamp
-  ) {
-    return false;
-  }
-
+  if (cursor.lastSequence !== undefined && event.sequence <= cursor.lastSequence) return false;
   return true;
+}
+
+export function hasSessionEventGap(
+  cursor: SessionEventCursor,
+  event: { sessionId: string; sequence: number }
+): boolean {
+  if (event.sessionId !== cursor.sessionId) return false;
+  return cursor.lastSequence !== undefined && event.sequence > cursor.lastSequence + 1;
 }
 
 export function markSessionEventProcessed(
   cursor: SessionEventCursor,
-  event: { eventId: string; timestamp: number }
+  event: { eventId: string; sequence: number }
 ): SessionEventCursor {
   return {
     ...cursor,
     lastEventId: event.eventId,
-    lastTimestamp: Math.max(cursor.lastTimestamp ?? 0, event.timestamp)
+    lastSequence: event.sequence
   };
 }
