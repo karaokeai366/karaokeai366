@@ -2488,15 +2488,25 @@ export function App() {
         await new Promise((resolve) => window.setTimeout(resolve, 1000));
       }
     } catch (err) {
+      const message = err instanceof Error
+        ? err.message
+        : 'Não foi possível preparar a música.';
+
+      // Falha de preparação não é cancelamento do usuário.
+      // Mantemos a música na fila para permitir nova tentativa e preservamos
+      // o diagnóstico no próprio item.
       try {
         transport.sendRaw('queue.status.set', session.sessionId, currentParticipantId, {
           queueEntryId,
-          status: 'cancelled'
+          status: 'queued',
+          preparationStage: 'error',
+          preparationProgress: 0,
+          preparationMessage: message
         });
       } catch {
         // Preserve the original media worker error.
       }
-      setError(err instanceof Error ? err.message : 'Não foi possível preparar a música.');
+      setError(message);
     }
   }
 
