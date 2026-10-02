@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx src/serverPartyReady.ts",
+    "dev": "tsx src/serverPartyReadyFixed.ts",
     "build": "tsc",
-    "start": "node dist/serverPartyReady.js"
+    "start": "node dist/serverPartyReadyFixed.js"
   },
   "dependencies": {
     "ws": "^8.22.0"
