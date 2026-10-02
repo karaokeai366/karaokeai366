@@ -21,6 +21,7 @@ The project is built around one idea: **the host coordinates the session, while 
 - A singer may restart a song only before 50% progress and only while restart credits remain for the current round.
 - Restarted attempts do not contribute to the official score.
 - The singer may transpose the song to a comfortable key before or when restarting, and scoring follows the selected key.
+- Party-scale sessions must support many participant phones; the initial scale target is 50 active participants, with a configurable capacity up to 100.
 
 ## Project principles
 
@@ -106,6 +107,8 @@ The repository contains application code and processing logic, not copyrighted m
 
 ## Current status
 
-**Phase 0 — architecture and product foundation**
+**Phase 1 — distributed session foundation**
 
-Next steps are tracked in GitHub Issues.
+The signaling/session foundation now includes participant presence and reconnect, Host transfer/recovery, server-side automatic queue advancement and granular session settings updates. The next development focus is completing the party-scale multi-participant model and the remaining karaoke pipeline, scoring and round features before full real-device testing.
+
+See GitHub Issue #9 for the multi-participant scale work and the architecture notes in `docs/architecture/multi-participant-scale.md`.
