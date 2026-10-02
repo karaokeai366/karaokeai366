@@ -2127,10 +2127,10 @@ export function App() {
   );
   // A QR/link join must never reuse a session cached on this device.
   // Otherwise a previous Host session can force the Join screen back into Host mode.
-  const [session, setSession] = useState<SessionState | null>(initialJoin ? null : storedSession);
-  const [currentParticipantId, setCurrentParticipantId] = useState(
-    initialJoin ? '' : storedSession?.hostParticipantId ?? ''
-  );
+  // A session stored locally is only a candidate to continue. It must not
+  // become the active React session until the Host explicitly continues it.
+  const [session, setSession] = useState<SessionState | null>(null);
+  const [currentParticipantId, setCurrentParticipantId] = useState('');
   const [name, setName] = useState('');
   const [joinName, setJoinName] = useState('');
   const [connection, setConnection] = useState<'offline' | 'connecting' | 'online' | 'error'>('offline');
@@ -2316,10 +2316,12 @@ export function App() {
     }
   }
 
-  async function reconnectCurrentSession(): Promise<void> {
-    if (!session || !currentParticipantId || reconnectInFlightRef.current) return;
+  async function reconnectCurrentSession(sessionOverride?: SessionState, participantIdOverride?: string): Promise<void> {
+    const activeSession = sessionOverride ?? session;
+    const activeParticipantId = participantIdOverride ?? currentParticipantId;
+    if (!activeSession || !activeParticipantId || reconnectInFlightRef.current) return;
 
-    const participant = session.participants.find((item) => item.id === currentParticipantId);
+    const participant = activeSession.participants.find((item) => item.id === activeParticipantId);
     if (!participant) return;
 
     reconnectInFlightRef.current = true;
@@ -2356,9 +2358,10 @@ export function App() {
 
     try {
       await socket.connect();
-      socket.sendRaw('session.reconnect', session.sessionId, currentParticipantId, {
+      socket.sendRaw('session.reconnect', activeSession.sessionId, activeParticipantId, {
         role: participant.role
       });
+      setCurrentParticipantId(activeParticipantId);
       setTransport(socket);
     } catch (err) {
       socket.disconnect();
@@ -2654,10 +2657,8 @@ export function App() {
 
     const continueStoredHostSession = async () => {
       if (!storedSession) return;
-      setSession(storedSession);
       setCurrentParticipantId(storedSession.hostParticipantId);
-      setView('host');
-      await reconnectStoredHost();
+      await reconnectCurrentSession(storedSession, storedSession.hostParticipantId);
     };
 
     const discardStoredHostSession = () => {
