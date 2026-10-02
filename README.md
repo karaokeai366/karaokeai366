@@ -1,98 +1,170 @@
 # KaraokeAI 🎤
 
-KaraokeAI is a distributed, local-first karaoke platform designed for Android, iOS, browsers and Smart TVs.
+KaraokeAI is a distributed, local-first karaoke platform designed to run first as a **React + TypeScript + Vite/PWA client** on phones and Smart TVs, with the architecture prepared for native Android/iOS wrappers later.
 
-The project is built around one idea: **the host coordinates the session, while participating devices contribute processing, audio capture and media playback whenever possible.**
+The core idea is simple: **the Host coordinates the party, the TV is the visual stage, and participant phones contribute microphone capture and media processing when needed.**
 
-## Core goals
+## Current implementation status
 
-- Android and iOS through a shared web/PWA client.
-- First device starts as the session host.
-- Host remains in control and must approve voluntary host transfers.
-- The system can recommend a better host based on device health/capacity, without taking control away from the host.
-- Processing is distributed across participant devices when practical.
-- Songs are prepared locally: instrumental, lyrics, synchronization and reference melody.
-- Each singer can use their own phone as a microphone.
-- WebRTC is the target transport for low-latency real-time audio/data.
-- Smart TV acts primarily as the visual stage.
-- Shared queue with ownership: participants can remove only their own queue entries; host can moderate the whole queue.
-- Evaluation has a clear start, performance and end.
-- A session/round can define how many songs contribute to the final score.
-- A singer may restart a song only before 50% progress and only while restart credits remain for the current round.
-- Restarted attempts do not contribute to the official score.
-- The singer may transpose the song to a comfortable key before or when restarting, and scoring follows the selected key.
-- Party-scale sessions support many participant phones; the initial scale target is 50 active participants, with a configurable capacity up to 100.
+The repository currently has one runnable frontend application: `apps/web`. It can operate as **Host, participant, or TV** through the same PWA codebase. `apps/mobile` and `apps/tv` are architectural targets, not separate runnable applications yet.
 
-## Project principles
+The signaling server is now party-oriented and supports the complete session lifecycle exposed by the protocol. The web client contains the corresponding typed command facade, incremental-event reducer/cursor, queue/media preparation, scoring, restart and WebRTC foundations. The remaining work is UI/UX completion and real-device validation of every flow; this README intentionally does not claim that those flows have already been field-tested.
 
-1. **Local-first**
-2. **Peer-assisted / distributed processing**
-3. **Host-controlled orchestration**
-4. **Low-latency audio**
-5. **Privacy by default**
-6. **Platform agnostic**
-7. **Modular AI processing**
-8. **Clear and friendly UX**
+## What the server exposes and what the web client supports
 
-## Planned stack
+| Capability | Signaling server | Web/PWA client |
+|---|---:|---:|
+| Create/join/reconnect session | ✅ | ✅ |
+| Snapshot synchronization/recovery | ✅ | ✅ |
+| Ordered incremental `session.event` | ✅ | ✅ |
+| Participant join/leave/update | ✅ | ✅ |
+| Capacity 2–100, default 50 | ✅ | ✅ state + validation |
+| TV excluded from participant capacity | ✅ | ✅ |
+| Host transfer | ✅ | ✅ command facade + state |
+| Host recovery/claim | ✅ | ✅ command facade + state |
+| Shared queue | ✅ | ✅ |
+| Per-participant queue limit | ✅ default 3 | ✅ server-enforced + state |
+| Queue add/remove/update | ✅ | ✅ |
+| Deterministic fair next singer | ✅ | ✅ state consumption |
+| Automatic queue advancement | ✅ | ✅ state consumption |
+| Song preparation progress | ✅ | ✅ |
+| Key/original/selected key | ✅ | ✅ |
+| Playback pause/resume/skip/end | ✅ | ✅ command facade + state |
+| Performance start/pause/resume/end | ✅ | ✅ incremental events |
+| Restart before 50% with credits | ✅ | ✅ policy + UI foundation |
+| Performance scoring | ✅ | ✅ scoring engine + submission |
+| Round modes (`open` / fixed songs) | ✅ | ✅ state + command facade |
+| Round completion | ✅ | ✅ state consumption |
+| WebRTC microphone foundation | ✅ signaling support | ✅ browser foundation |
+| Pitch detection/scoring | — | ✅ |
+| Automatic key suggestion | — | ✅ |
+| TV visual-stage role | ✅ session role | ✅ same web app |
 
-- Frontend: React + TypeScript + Vite + PWA
-- Real-time control: WebSocket
-- Real-time audio: WebRTC
-- Host/session engine: browser/PWA compatible, with a path to a native wrapper when required by platform restrictions
-- Local persistence: IndexedDB
-- Media processing: FFmpeg
-- AI adapters: Demucs/UVR-compatible source separation, Whisper/WhisperX-compatible lyrics alignment, pitch detection/scoring adapters
-- Optional future native wrapper: Capacitor
-- Optional future desktop/server node: .NET
+## Party-scale rules
 
-## High-level architecture
+- Default active-participant capacity: **50**.
+- Configurable capacity: **2–100**.
+- TV clients do not consume participant slots.
+- Offline participants keep their identity but do not consume an active slot.
+- Default queue limit: **3 active songs per participant**.
+- The server chooses the next singer using deterministic fairness rules rather than a two-device assumption.
+- Queue membership does **not** create an audio stream.
+- Only the current singer needs the real-time microphone/media path.
+- Incremental `session.event` messages carry an ordered sequence number.
+- A client that detects a sequence gap requests a full snapshot for recovery.
+- Legacy full snapshots remain enabled during migration for safe compatibility.
+
+## Protocol
+
+Client commands include:
 
 ```text
-                         KARAOKE SESSION
-                                |
-                       +--------+--------+
-                       |                 |
-                    HOST NODE         TV / STAGE
-                       |                 |
-               session coordination    visual UI
-                       |
-          +------------+-------------+
-          |            |             |
-        phone        phone         phone
-        worker       worker        worker
-          |            |             |
-       download     download     download
-       prepare      prepare      prepare
-          |            |             |
-          +------------+-------------+
-                       |
-                    WebRTC
-                       |
-                 real-time audio
-                       |
-                    Audio out
+session.create
+session.join
+session.reconnect
+session.state.request
+session.settings.set
+host.claim
+host.transfer
+queue.add
+queue.remove
+queue.status.set
+queue.next
+queue.restart
+playback.finished
+playback.control
+performance.complete
+round.configure
 ```
+
+Server-side incremental events include:
+
+```text
+participant.joined
+participant.left
+participant.updated
+host.changed
+queue.added
+queue.updated
+queue.removed
+queue.next
+singer.called
+performance.started
+performance.paused
+performance.resumed
+performance.finished
+performance.scored
+round.updated
+session.settings.changed
+```
+
+## Architecture
+
+```text
+                         KARAOKE PARTY
+                              │
+                 ┌────────────┴────────────┐
+                 │                         │
+              SIGNALING                  TV/PWA
+                 │                         │
+        session + queue + events      visual stage
+                 │
+      ┌──────────┼──────────┐
+      │          │          │
+   phone #1   phone #2   phone #N ... phone #50
+      │          │          │
+   control    control    control
+   + mic      + mic      + mic
+      │          │          │
+      └──────────┴──────────┘
+                 │
+        current singer only
+                 │
+              WebRTC
+                 │
+             audio out
+```
+
+### Snapshot + event model
+
+```text
+new connection / recovery
+          │
+          ▼
+   session.state snapshot
+          │
+          ▼
+ ordered session.event #1
+          │
+          ▼
+ ordered session.event #2
+          │
+          ▼
+ ordered session.event #N
+
+if a sequence gap is detected:
+          │
+          ▼
+   request session.state
+```
+
+This avoids sending a complete session snapshot for every queue or performance change while retaining a reliable recovery path.
 
 ## Repository layout
 
 ```text
 /
 ├── apps/
-│   ├── mobile/
-│   ├── tv/
-│   └── web/
+│   ├── web/                 # current runnable PWA: Host / participant / TV
+│   ├── signaling/           # party WebSocket server
+│   └── media-worker/        # media preparation worker
 ├── packages/
-│   ├── protocol/
-│   ├── session/
-│   ├── queue/
-│   ├── scoring/
+│   ├── protocol/            # WebSocket message contracts
+│   ├── session/             # session state, events, fairness, rounds
+│   ├── media/               # media/search/preparation contracts
+│   ├── scoring/             # scoring foundations
 │   ├── lyrics/
-│   ├── media/
 │   └── audio/
-├── workers/
-│   ├── media-prep/
-│   └── scoring/
 ├── docs/
 │   ├── architecture/
 │   ├── product/
@@ -100,19 +172,7 @@ The project is built around one idea: **the host coordinates the session, while 
 └── README.md
 ```
 
-## Party-scale session rules
-
-- Default active-participant capacity: **50**.
-- Configurable capacity: **2–100**.
-- TV clients do not consume participant slots.
-- Offline participants keep their identity but do not consume an active slot.
-- Default queue limit: **3 active songs per participant**.
-- The server selects the next singer using deterministic fairness rules rather than a two-device assumption.
-- Only the current singer needs the real-time microphone/media path; queue membership does not create an audio stream.
-- Incremental `session.event` messages carry ordered sequence numbers; snapshots remain available for initial synchronization and recovery.
-- `LEGACY_SNAPSHOT_BROADCAST` defaults to `true` during the migration so the existing web client remains compatible. It can be disabled after event consumption is enabled throughout the clients.
-
-### Signaling environment
+## Signaling environment
 
 ```text
 PORT=8787
@@ -121,38 +181,100 @@ MAX_SONGS_PER_PARTICIPANT=3
 LEGACY_SNAPSHOT_BROADCAST=true
 ```
 
-The signaling service now runs `src/serverPartyReady.ts` by default and retains the existing WebSocket message names used by the web client.
+The signaling service runs `src/serverPartyReady.ts` by default.
 
-## Local test
+## Local development
 
-Start the signaling service:
+### 1. Signaling
 
 ```bash
 npm --prefix apps/signaling install
 npm --prefix apps/signaling run dev
 ```
 
-In another terminal, start the web application:
+### 2. Web/PWA
 
 ```bash
 npm --prefix apps/web install
 npm --prefix apps/web run dev
 ```
 
-The web client defaults to WebSocket port `8787`. To use another host/port, set `VITE_SIGNALING_URL` in the web environment.
+The web client defaults to WebSocket port `8787`. Use `VITE_SIGNALING_URL` to point it at another signaling host/port.
 
-For a first party test, create one Host session, join from several phones, then progressively test 5, 10, 20 and 30 devices before attempting 50. The server enforces the configured participant limit.
+### 3. Media worker
 
-## Important legal/operational boundary
+The media worker has its own Python environment and compile check. See `apps/media-worker/` for its current runtime instructions.
 
-The repository contains application code and processing logic, not copyrighted music libraries. Integrations must respect the rights, terms and licenses applicable to any external media source.
+## Recommended test progression
 
-## Current status
+Do not jump directly to 50 phones. Validate the complete flow progressively:
 
-**Phase 1 — party-scale session foundation: ready for functional testing**
+```text
+1 Host + 1 participant
+        ↓
+5 participants
+        ↓
+10 participants
+        ↓
+20 participants
+        ↓
+30 participants
+        ↓
+50 participants
+```
 
-The signaling/session foundation now covers participant presence and reconnect, configurable capacity, Host transfer/recovery, per-participant queue limits, deterministic fair queue selection, automatic queue advancement, round state, restart limits, performance lifecycle, score submission, granular session events and legacy snapshot recovery.
+At each level validate:
 
-The project is now at the point where real-device functional testing can begin. The next validation stage is not a new two-phone feature pass; it is progressive party testing at 5 → 10 → 20 → 30 → 50 participants, followed by disabling legacy full-snapshot broadcasts after all clients consume incremental events reliably.
+1. create/join/reconnect;
+2. participant presence;
+3. add/remove songs;
+4. per-user queue limit;
+5. fair next singer;
+6. preparation and selected key;
+7. singer call;
+8. microphone/WebRTC;
+9. playback controls;
+10. automatic completion;
+11. scoring;
+12. restart policy;
+13. round completion;
+14. Host transfer/recovery;
+15. TV synchronization;
+16. event-loss recovery through snapshots.
 
-See GitHub Issue #9 for the multi-participant scale work and the architecture notes in `docs/architecture/multi-participant-scale.md` and `docs/architecture/party-queue.md`.
+## CI/build gate
+
+Every implementation change must pass all three repository checks before being treated as complete:
+
+```text
+web
+ ├─ npm run typecheck
+ └─ npm run build
+
+signaling
+ └─ npm run build
+
+media-worker
+ └─ python -m compileall -q src
+```
+
+A green build is necessary but not sufficient for declaring the product functionally ready: real-device WebSocket/WebRTC/media tests are still required.
+
+## Architecture documentation
+
+Key documents:
+
+- `docs/architecture/multi-participant-scale.md`
+- `docs/architecture/session-events.md`
+- `docs/architecture/session-scale-implementation.md`
+- `docs/architecture/party-queue.md`
+
+## Legal/operational boundary
+
+The repository contains application and processing code, not copyrighted music libraries. Any external media integration must respect the applicable rights, terms and licenses.
+
+## Current milestone
+
+**Party-scale foundation → integration and functional validation.**
+
+The server and shared protocol now model the full party lifecycle. The web/PWA client is being brought into parity with those server capabilities. The next milestone is a green CI run for the current integration, followed by end-to-end testing at increasing participant counts. Only after those tests pass should legacy full-snapshot broadcasting be disabled.
