@@ -4,9 +4,6 @@ function getMediaWorkerUrl(): string {
   const configured = import.meta.env.VITE_MEDIA_WORKER_URL as string | undefined;
   if (configured) return configured.replace(/\/$/, '');
 
-  // In local-network testing, localhost would point back to the phone/tablet.
-  // Use the same host that served the web app so desktop and mobile clients
-  // reach the Media Worker on the karaoke server.
   return `${window.location.protocol}//${window.location.hostname}:8790`;
 }
 
@@ -33,9 +30,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 interface MediaSearchResponse {
   results: WorkerSongSearchResult[];
-  page: number;
-  page_size: number;
-  has_more: boolean;
+  page?: number;
+  page_size?: number;
+  has_more?: boolean;
 }
 
 export type SongSearchPage = SongSearchResult[] & {
@@ -44,8 +41,13 @@ export type SongSearchPage = SongSearchResult[] & {
   hasMore: boolean;
 };
 
-export async function searchSongs(query: string, page = 1, pageSize = 20): Promise<SongSearchPage> {
-  const params = new URLSearchParams({ q: query.trim(), page: String(page), limit: String(pageSize) });
+export async function searchSongs(query: string, page = 1, pageSize = 15): Promise<SongSearchPage> {
+  const safePageSize = Math.max(1, Math.min(15, pageSize));
+  const params = new URLSearchParams({
+    q: query.trim(),
+    page: String(Math.max(1, page)),
+    limit: String(safePageSize)
+  });
   const response = await request<MediaSearchResponse>(`/search?${params.toString()}`);
 
   const results = response.results.map((result) => ({
@@ -60,9 +62,9 @@ export async function searchSongs(query: string, page = 1, pageSize = 20): Promi
     sourceUrl: result.source_url
   })) as SongSearchPage;
 
-  results.page = response.page;
-  results.pageSize = response.page_size;
-  results.hasMore = response.has_more;
+  results.page = response.page ?? page;
+  results.pageSize = response.page_size ?? safePageSize;
+  results.hasMore = Boolean(response.has_more);
   return results;
 }
 
