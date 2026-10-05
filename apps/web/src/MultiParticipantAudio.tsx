@@ -286,6 +286,7 @@ export function TvMultiMicrophoneReceiver({
   const audioGainsRef = useRef(new Map<string, GainNode>());
   const [, redraw] = useState(0);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const [guestVolumes, setGuestVolumes] = useState<Record<string, number>>({});
   const guestIds = useMemo(() => new Set(
     (playing?.performanceParticipants ?? [])
       .filter((item) => item.role === 'guest' && item.active)
@@ -361,7 +362,7 @@ export function TvMultiMicrophoneReceiver({
             previousGain?.disconnect();
             const source = context.createMediaStreamSource(stream);
             const gain = context.createGain();
-            gain.gain.value = 1;
+            gain.gain.value = (guestVolumes[senderId] ?? 100) / 100;
             source.connect(gain).connect(voiceDestination);
             audioSourcesRef.current.set(senderId, source);
             audioGainsRef.current.set(senderId, gain);
@@ -406,7 +407,7 @@ export function TvMultiMicrophoneReceiver({
       previousGain?.disconnect();
       const source = audioContext.createMediaStreamSource(stream);
       const gain = audioContext.createGain();
-      gain.gain.value = 1;
+      gain.gain.value = (guestVolumes[id] ?? 100) / 100;
       source.connect(gain).connect(voiceDestination);
       audioSourcesRef.current.set(id, source);
       audioGainsRef.current.set(id, gain);
@@ -431,6 +432,13 @@ export function TvMultiMicrophoneReceiver({
     else pendingIceRef.current.set(senderId, [...(pendingIceRef.current.get(senderId) ?? []), candidate]);
   }, [signals, participantId, guestIds]);
 
+  function setGuestVolume(participantId: string, volume: number) {
+    const normalized = Math.min(150, Math.max(0, Math.round(volume)));
+    setGuestVolumes((current) => ({ ...current, [participantId]: normalized }));
+    const gain = audioGainsRef.current.get(participantId);
+    if (gain) gain.gain.value = normalized / 100;
+  }
+
   async function unlockAudio() {
     const context = audioContext ?? audioContextRef.current;
     if (context && context.state === 'suspended') await context.resume().catch(() => undefined);
@@ -445,8 +453,37 @@ export function TvMultiMicrophoneReceiver({
 
   return (
     <div className="tv-multi-microphone">
-      <span className="tag">🎤 {connected.length}/{guestIds.size} microfones extras</span>
-      {!audioContext && !audioUnlocked && <button className="secondary" type="button" onClick={() => void unlockAudio()}>🔊 Ativar vozes adicionais</button>}
+      <div className="tv-multi-microphone-heading">
+        <span className="tag">🎤 {connected.length}/{guestIds.size} microfones extras</span>
+        {!audioContext && !audioUnlocked && <button className="secondary" type="button" onClick={() => void unlockAudio()}>🔊 Ativar vozes adicionais</button>}
+      </div>
+      <div className="tv-multi-microphone-list">
+        {[...guestIds].map((id) => {
+          const person = session.participants.find((item) => item.id === id);
+          const volume = guestVolumes[id] ?? 100;
+          const connectedNow = connected.includes(id);
+          return (
+            <label className="tv-guest-volume" key={id}>
+              <span>
+                <strong>{person?.name ?? 'Convidado'}</strong>
+                <small>{connectedNow ? 'conectado' : 'aguardando microfone'} · {volume}%</small>
+              </span>
+              <input
+                type="range"
+                min="0"
+                max="150"
+                step="5"
+                value={volume}
+                aria-label="Volume do convidado"
+                onChange={(event) => setGuestVolume(id, Number(event.target.value))}
+              />
+              <button className="secondary" type="button" onClick={() => setGuestVolume(id, volume === 0 ? 100 : 0)}>
+                {volume === 0 ? '🔊' : '🔇'}
+              </button>
+            </label>
+          );
+        })}
+      </div>
     </div>
   );
 }
