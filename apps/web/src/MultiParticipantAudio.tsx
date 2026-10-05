@@ -508,6 +508,18 @@ export function TvMultiMicrophoneReceiver({
   }, [guestIds]);
 
 
+  function guestQualityLabel(id: string): string {
+    const rtt = guestRtt[id];
+    const quality = guestQuality[id];
+    if (rtt == null && quality?.jitterMs == null) return 'medindo';
+    const lost = quality?.packetsLost ?? 0;
+    const received = quality?.packetsReceived ?? 0;
+    const lossPercent = received > 0 ? (lost / (lost + received)) * 100 : 0;
+    if ((rtt ?? 0) > 180 || (quality?.jitterMs ?? 0) > 40 || lossPercent > 5) return 'ruim';
+    if ((rtt ?? 0) > 100 || (quality?.jitterMs ?? 0) > 20 || lossPercent > 1) return 'atenção';
+    return 'boa';
+  }
+
   function setGuestDelay(participantId: string, delayMs: number) {
     const normalized = Math.min(250, Math.max(0, Math.round(delayMs / 5) * 5));
     setGuestDelays((current) => ({ ...current, [participantId]: normalized }));
@@ -575,7 +587,7 @@ export function TvMultiMicrophoneReceiver({
             <label className="tv-guest-volume" key={id}>
               <span>
                 <strong>{person?.name ?? 'Convidado'}</strong>
-                <small>{connectedNow ? 'conectado' : 'aguardando microfone'} · volume {volume}% · atraso {guestDelays[id] ?? 0} ms{guestRtt[id] != null ? ' · RTT ' + guestRtt[id] + ' ms' : ''}{guestQuality[id]?.jitterMs != null ? ' · jitter ' + guestQuality[id]!.jitterMs + ' ms' : ''}</small>
+                <small>{connectedNow ? 'conectado' : 'aguardando microfone'} · {guestQualityLabel(id)} · volume {volume}% · atraso {guestDelays[id] ?? 0} ms{guestRtt[id] != null ? ' · RTT ' + guestRtt[id] + ' ms' : ''}{guestQuality[id]?.jitterMs != null ? ' · jitter ' + guestQuality[id]!.jitterMs + ' ms' : ''}</small>
               </span>
               <input
                 type="range"
