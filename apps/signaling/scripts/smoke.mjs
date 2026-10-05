@@ -228,6 +228,55 @@ try {
     m.payload?.command === 'performance.audio.offer'
   );
 
+  // Valida a ida e volta da sinalização WebRTC: oferta, resposta e ICE.
+  handoverTarget.send('session.command', {
+    command: 'performance.audio.answer',
+    data: {
+      fromParticipantId: 'smoke-handover-target',
+      targetParticipantId: 'smoke-handover-guest',
+      queueEntryId: disconnectQueueEntryId,
+      performanceId: disconnectPerformanceId,
+      sdp: { type: 'answer', sdp: 'smoke-answer' }
+    }
+  });
+  await handoverGuest.waitFor(m =>
+    m.type === 'session.command' &&
+    m.payload?.command === 'performance.audio.answer' &&
+    m.payload?.data?.targetParticipantId === 'smoke-handover-guest'
+  );
+
+  handoverGuest.send('session.command', {
+    command: 'performance.audio.ice-candidate',
+    data: {
+      fromParticipantId: 'smoke-handover-guest',
+      targetParticipantId: 'smoke-handover-target',
+      queueEntryId: disconnectQueueEntryId,
+      performanceId: disconnectPerformanceId,
+      candidate: { candidate: 'smoke-guest-ice', sdpMid: '0', sdpMLineIndex: 0 }
+    }
+  });
+  await handoverTarget.waitFor(m =>
+    m.type === 'session.command' &&
+    m.payload?.command === 'performance.audio.ice-candidate' &&
+    m.payload?.data?.targetParticipantId === 'smoke-handover-target'
+  );
+
+  handoverTarget.send('session.command', {
+    command: 'performance.audio.ice-candidate',
+    data: {
+      fromParticipantId: 'smoke-handover-target',
+      targetParticipantId: 'smoke-handover-guest',
+      queueEntryId: disconnectQueueEntryId,
+      performanceId: disconnectPerformanceId,
+      candidate: { candidate: 'smoke-target-ice', sdpMid: '0', sdpMLineIndex: 0 }
+    }
+  });
+  await handoverGuest.waitFor(m =>
+    m.type === 'session.command' &&
+    m.payload?.command === 'performance.audio.ice-candidate' &&
+    m.payload?.data?.targetParticipantId === 'smoke-handover-guest'
+  );
+
   handoverTarget.send('performance.participant.remove', {
     queueEntryId: disconnectQueueEntryId,
     participantId: 'smoke-handover-guest'
