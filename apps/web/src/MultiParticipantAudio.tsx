@@ -55,13 +55,13 @@ export function PerformanceGuestControls({
     'performance.participant.add',
     session.sessionId,
     participantId,
-    { queueEntryId: playing.id, participantId: targetParticipantId }
+    { queueEntryId: playing.id, performanceId: playing.activePerformanceId ?? '', participantId: targetParticipantId }
   );
   const remove = (targetParticipantId: string) => transport?.sendRaw(
     'performance.participant.remove',
     session.sessionId,
     participantId,
-    { queueEntryId: playing.id, participantId: targetParticipantId }
+    { queueEntryId: playing.id, performanceId: playing.activePerformanceId ?? '', participantId: targetParticipantId }
   );
 
   return (
@@ -128,6 +128,7 @@ export function PerformanceGuestMicrophone({
     if (notify && transport && playing) {
       transport.sendRaw('performance.audio.state', session.sessionId, participantId, {
         queueEntryId: playing.id,
+        performanceId: playing.activePerformanceId ?? '',
         audioEnabled: false
       });
     }
@@ -215,6 +216,7 @@ export function PerformanceGuestMicrophone({
       });
       transport.sendRaw('performance.audio.state', session.sessionId, participantId, {
         queueEntryId: playing.id,
+        performanceId: playing.activePerformanceId ?? '',
         audioEnabled: true
       });
       setMuted(false);
