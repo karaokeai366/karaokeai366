@@ -224,11 +224,10 @@ export function PerformanceGuestMicrophone({
       transport.sendRaw('performance.audio.state', session.sessionId, participantId, {
         queueEntryId: playing.id,
         performanceId: playing.activePerformanceId ?? '',
-        audioEnabled: true
+        audioEnabled: stream.getAudioTracks().some((track) => track.enabled)
       });
-      setMuted(false);
-      setActive(false);
-      setReconnecting(true);
+      setActive(true);
+      setReconnecting(false);
     } catch (cause) {
       if (!intentionalStopRef.current) scheduleReconnect();
       setError(cause instanceof Error ? cause.message : 'Não foi possível conectar o microfone adicional.');
@@ -276,6 +275,7 @@ export function PerformanceGuestMicrophone({
         video: false
       });
       streamRef.current = stream;
+      setMuted(stream.getAudioTracks().every((track) => !track.enabled));
       await negotiate(stream);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Não foi possível ativar o microfone adicional.');
