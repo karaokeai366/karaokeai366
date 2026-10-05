@@ -420,7 +420,7 @@ export function TvMultiMicrophoneReceiver({
         closePeer(senderId);
       }
     })();
-  }, [signals, transport, participantId, playing?.id, playing?.activePerformanceId, guestIds, audioUnlocked, audioContext, voiceDestination]);
+  }, [signals, transport, participantId, playing?.id, playing?.activePerformanceId, guestIds, audioUnlocked, audioContext, voiceDestination, guestVolumes, guestDelays]);
 
   useEffect(() => {
     if (!audioContext || !voiceDestination) return;
@@ -462,6 +462,32 @@ export function TvMultiMicrophoneReceiver({
 
   useEffect(() => {
     setGuestVolumes((current) => {
+      const next = { ...current };
+      let changed = false;
+      for (const id of Object.keys(next)) {
+        if (!guestIds.has(id)) { delete next[id]; changed = true; }
+      }
+      return changed ? next : current;
+    });
+    setGuestDelays((current) => {
+      const next = { ...current };
+      let changed = false;
+      for (const id of Object.keys(next)) {
+        if (!guestIds.has(id)) { delete next[id]; changed = true; }
+      }
+      return changed ? next : current;
+    });
+    setGuestRtt((current) => {
+      const next = { ...current };
+      let changed = false;
+      for (const id of Object.keys(next)) {
+        if (!guestIds.has(id)) { delete next[id]; changed = true; }
+      }
+      return changed ? next : current;
+    });
+  }, [guestIds]);
+
+
       const next = { ...current };
       let changed = false;
       for (const id of Object.keys(next)) {
