@@ -1905,7 +1905,14 @@ function TvStage({
 
   return (
     <>
-      <TvMultiMicrophoneReceiver session={session} participantId={participantId} transport={transport} signals={signals} />
+      <TvMultiMicrophoneReceiver
+        session={session}
+        participantId={participantId}
+        transport={transport}
+        signals={signals}
+        audioContext={audioContextRef.current}
+        voiceDestination={voiceGainRef.current}
+      />
       <main className="tv-stage">
       <audio ref={audioRef} preload="auto" crossOrigin="anonymous" />
       <audio ref={remoteAudioRef} autoPlay playsInline />
