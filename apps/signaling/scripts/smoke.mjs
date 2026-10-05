@@ -6,7 +6,7 @@ const sessionId = `smoke-${Date.now()}`;
 const soloSessionId = `smoke-solo-${Date.now()}`;
 const TIMEOUT = 15000;
 
-function client(senderId) {
+function client(senderId, clientSessionId = sessionId) {
   const ws = new WebSocket(url);
   const messages = [];
   const waiters = [];
@@ -52,7 +52,7 @@ function client(senderId) {
       ws.send(JSON.stringify({
         id: crypto.randomUUID(),
         type,
-        sessionId,
+        sessionId: clientSessionId,
         senderId,
         timestamp: Date.now(),
         payload
@@ -71,9 +71,9 @@ const host = client('smoke-host');
 const singer = client('smoke-singer');
 const tv = client('smoke-tv');
 const overflow = client('smoke-overflow');
-const soloHost = client('smoke-solo-host');
-const soloSinger = client('smoke-solo-singer');
-const soloTv = client('smoke-solo-tv');
+const soloHost = client('smoke-solo-host', soloSessionId);
+const soloSinger = client('smoke-solo-singer', soloSessionId);
+const soloTv = client('smoke-solo-tv', soloSessionId);
 // Host + singer + 48 additional participants = exactly 50 active participants.
 const participants = Array.from({ length: 48 }, (_, index) => client(`smoke-party-${index + 1}`));
 
