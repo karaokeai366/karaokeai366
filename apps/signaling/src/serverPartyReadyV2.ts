@@ -415,7 +415,7 @@ wss.on('connection', ws => {
           const target = String(data?.targetParticipantId ?? '');
           const recipient = s.clients.get(target);
           if (!recipient) return fail(ws, 'Destino de áudio não conectado.');
-          if (recipient.role === 'tv' || c.participantId === s.hostId || members.some((x:any) => x.participantId === target && x.active)) {
+          if (recipient.role === 'tv' || target === s.hostId || c.participantId === s.hostId || members.some((x:any) => x.participantId === target && x.active)) {
             send(recipient.socket,'session.command',m.payload);
           } else {
             return fail(ws, 'Destino não participa do áudio desta apresentação.');
