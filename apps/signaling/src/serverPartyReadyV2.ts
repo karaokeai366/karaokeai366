@@ -5,7 +5,7 @@ type Role = 'host' | 'participant' | 'tv';
 type Client = { socket: WebSocket; sessionId: string; participantId: string; role: Role };
 type Message = { type?: string; sessionId?: string; senderId?: string; payload?: any };
 type Session = { id: string; hostId: string; state: any; clients: Map<string, Client>; sequence: number; hostDisconnectedAt?: number };
-type EventType = 'participant.joined' | 'participant.left' | 'participant.updated' | 'host.changed' | 'queue.added' | 'queue.updated' | 'queue.removed' | 'queue.next' | 'singer.called' | 'performance.started' | 'performance.paused' | 'performance.resumed' | 'performance.finished' | 'performance.scored' | 'round.updated' | 'session.settings.changed';
+type EventType = 'participant.joined' | 'participant.left' | 'participant.updated' | 'host.changed' | 'host.transfer.pending' | 'queue.added' | 'queue.updated' | 'queue.removed' | 'queue.next' | 'singer.called' | 'performance.started' | 'performance.paused' | 'performance.resumed' | 'performance.finished' | 'performance.scored' | 'round.updated' | 'session.settings.changed';
 
 const port = Number(process.env.PORT ?? 8787);
 const defaultCapacity = clamp(Number(process.env.DEFAULT_SESSION_CAPACITY ?? 50), 1, 50);
@@ -32,7 +32,7 @@ function initialState(state: any, sid: string, hostId: string) {
   s.participants = Array.isArray(s.participants) ? s.participants : [];
   s.queue = Array.isArray(s.queue) ? s.queue : [];
   s.queueSize = s.queue.length; s.roundId ??= randomUUID(); s.roundMode ??= { kind: 'songs', songCount: 1 };
-  s.roundResultsByParticipant ??= {}; s.restartCreditsByParticipant ??= {}; s.autoAdvance ??= true; s.status ??= 'lobby';
+  s.roundResultsByParticipant ??= {}; s.restartCreditsByParticipant ??= {}; s.autoAdvance ??= true; s.status ??= 'lobby'; s.pendingHostParticipantId ??= undefined;
   return s;
 }
 function restartCredits(mode: any) { if (mode?.kind === 'open') return 1; const n = clamp(Number(mode?.songCount ?? 1), 1, 100); return n <= 2 ? 1 : n <= 4 ? 2 : Math.max(1, Math.floor(n * 0.3)); }
@@ -64,7 +64,45 @@ function finishSong(s: Session, q: any) {
   const updated = { ...q, status: 'completed', playbackState: undefined, playbackPositionSeconds: q.durationSeconds ?? q.playbackPositionSeconds };
   s.state.queue = s.state.queue.map((x: any) => x.id === q.id ? updated : x); s.state.status = 'lobby';
   changed(s, 'performance.finished', { queueEntryId: q.id, status: 'completed' });
-  if (s.state.autoAdvance !== false) { const next = nextSong(s); if (next) startSong(s, next); }
+
+  // A troca de Host nunca interrompe uma apresentação em andamento. Se o
+  // Host caiu durante a música, ela termina normalmente e a sessão fica
+  // parada antes de escolher o próximo cantor. Isso dá ao Host original a
+  // chance de reconectar e, depois do término, permite takeover seguro.
+  const hostOffline = person(s, s.hostId)?.online === false;
+  if (hostOffline) {
+    s.state.status = 'paused';
+    changed(s, 'host.changed', {
+      hostParticipantId: s.hostId,
+      waitingForHostRecovery: true,
+      reason: 'performance_finished_host_offline'
+    });
+    return;
+  }
+
+  if (s.state.pendingHostParticipantId) {
+    const targetId = String(s.state.pendingHostParticipantId);
+    const target = person(s, targetId);
+    const old = person(s, s.hostId);
+    if (target && target.role !== 'tv' && target.online !== false) {
+      if (old) old.role = 'participant';
+      target.role = 'host';
+      s.hostId = targetId;
+      s.state.hostParticipantId = targetId;
+      s.state.pendingHostParticipantId = undefined;
+      changed(s, 'host.changed', {
+        hostParticipantId: targetId,
+        state: { hostParticipantId: targetId },
+        appliedAfterPerformance: true
+      }, targetId);
+    } else {
+      s.state.pendingHostParticipantId = undefined;
+    }
+  }
+
+  if (s.state.autoAdvance !== false) {
+    const next = nextSong(s); if (next) startSong(s, next);
+  }
 }
 function applyQueueStatus(s: Session, q: any, payload: any, actor: string) {
   const status = String(payload.status);
@@ -239,11 +277,39 @@ wss.on('connection', ws => {
       }
       case 'session.state.set': { if (c.participantId !== s.hostId) return fail(ws, 'Somente o Host pode alterar o estado.'); s.state = initialState(m.payload?.state,s.id,s.hostId); changed(s,'session.settings.changed',{state:s.state},c.participantId); break; }
       case 'host.transfer': {
-        if (c.participantId !== s.hostId) return fail(ws, 'Somente o Host atual pode transferir o Host.'); const target = String(m.payload?.targetParticipantId ?? ''); const p = person(s,target); if (!p || p.role === 'tv' || p.online === false) return fail(ws,'Participante inválido para assumir o Host.');
-        const old = person(s,s.hostId); if (old) old.role = 'participant'; p.role = 'host'; s.hostId = target; s.state.hostParticipantId = target; changed(s,'host.changed',{hostParticipantId:target,state:{hostParticipantId:target}},c.participantId); break;
+        if (c.participantId !== s.hostId) return fail(ws, 'Somente o Host atual pode transferir o Host.');
+        const target = String(m.payload?.targetParticipantId ?? '');
+        const p = person(s,target);
+        if (!p || p.role === 'tv' || p.online === false) return fail(ws,'Participante inválido para assumir o Host.');
+
+        const playing = s.state.queue.find((x:any) => x.status === 'playing');
+        if (playing) {
+          s.state.pendingHostParticipantId = target;
+          changed(s, 'host.transfer.pending', {
+            currentHostParticipantId: s.hostId,
+            targetParticipantId: target,
+            queueEntryId: playing.id,
+            applyAfterPerformance: true
+          }, c.participantId);
+          return;
+        }
+
+        const old = person(s,s.hostId); if (old) old.role = 'participant';
+        p.role = 'host'; s.hostId = target; s.state.hostParticipantId = target;
+        changed(s,'host.changed',{hostParticipantId:target,state:{hostParticipantId:target}},c.participantId); break;
       }
       case 'host.claim': {
-        const p = person(s,c.participantId); const host = person(s,s.hostId); if (!p || p.role === 'tv') return fail(ws,'Participante inválido.'); if (host?.online !== false) return fail(ws,'O Host atual ainda está conectado.');
+        const p = person(s,c.participantId); const host = person(s,s.hostId);
+        if (!p || p.role === 'tv') return fail(ws,'Participante inválido.');
+        if (host?.online !== false) return fail(ws,'O Host atual ainda está conectado.');
+
+        // Nunca faça takeover no meio de uma apresentação: o Host original
+        // pode reconectar e recuperar o controle até a música terminar.
+        const playing = s.state.queue.find((x:any) => x.status === 'playing');
+        if (playing) {
+          return fail(ws,'O Host está desconectado, mas a música atual continua até o fim. A troca de Host ficará disponível após a apresentação.');
+        }
+
         // Uma queda curta de Wi-Fi/rede não deve trocar o anfitrião. Dê ao
         // Host original uma janela para reconectar antes de permitir takeover.
         if (s.hostDisconnectedAt && Date.now() - s.hostDisconnectedAt < 30000) {
