@@ -4,18 +4,21 @@ type BenchmarkResult = {
   contributors: number;
   setupMs: number;
   connected: number;
-  elapsedMs: number;
+  holdMs: number;
   packetsReceived: number;
   packetsLost: number;
+  lossPercent: number;
+  maxRttMs: number | null;
+  maxJitterMs: number | null;
 };
 
 type PeerBundle = {
   sender: RTCPeerConnection;
   receiver: RTCPeerConnection;
-  source: MediaStreamAudioSourceNode;
   oscillator: OscillatorNode;
   destination: MediaStreamAudioDestinationNode;
   gain: GainNode;
+  remoteSources: MediaStreamAudioSourceNode[];
 };
 
 async function waitIceComplete(peer: RTCPeerConnection): Promise<void> {
@@ -37,6 +40,7 @@ async function connectPair(
   track: MediaStreamTrack
 ): Promise<void> {
   sender.addTrack(track);
+
   sender.onicecandidate = (event) => {
     if (event.candidate) void receiver.addIceCandidate(event.candidate).catch(() => undefined);
   };
@@ -55,6 +59,21 @@ async function connectPair(
   await sender.setRemoteDescription(receiver.localDescription!);
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function closeBundles(bundles: PeerBundle[]) {
+  for (const bundle of bundles) {
+    try { bundle.oscillator.stop(); } catch {}
+    bundle.sender.close();
+    bundle.receiver.close();
+    bundle.remoteSources.forEach((source) => source.disconnect());
+    bundle.gain.disconnect();
+    bundle.destination.disconnect();
+  }
+}
+
 export function WebRtcAudioLoadBenchmark() {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<BenchmarkResult | null>(null);
@@ -64,15 +83,20 @@ export function WebRtcAudioLoadBenchmark() {
 
   async function run(contributors: number) {
     if (running) return;
+
     setRunning(true);
     setError('');
     setResult(null);
+    closeBundles(bundlesRef.current);
+    bundlesRef.current = [];
 
     const startedAt = performance.now();
     const bundles: PeerBundle[] = [];
 
     try {
-      if (!('RTCPeerConnection' in window)) throw new Error('WebRTC não está disponível neste navegador.');
+      if (!('RTCPeerConnection' in window)) {
+        throw new Error('WebRTC não está disponível neste navegador.');
+      }
 
       const context = contextRef.current ?? new AudioContext();
       contextRef.current = context;
@@ -84,62 +108,89 @@ export function WebRtcAudioLoadBenchmark() {
 
         const oscillator = context.createOscillator();
         oscillator.frequency.value = 180 + index * 7;
+
         const destination = context.createMediaStreamDestination();
-        const source = context.createMediaStreamSource(destination.stream);
         const gain = context.createGain();
         gain.gain.value = 0.04;
-
         oscillator.connect(gain).connect(destination);
         oscillator.start();
 
-        const receiverGain = context.createGain();
-        receiverGain.gain.value = 0;
-        const receiverDestination = context.createMediaStreamDestination();
+        const remoteGain = context.createGain();
+        // Mantém o processamento do áudio remoto sem emitir o tom no alto-falante.
+        remoteGain.gain.value = 0;
+        const remoteDestination = context.createMediaStreamDestination();
+        const remoteSources: MediaStreamAudioSourceNode[] = [];
+
         receiver.ontrack = (event) => {
           const stream = event.streams[0] ?? new MediaStream([event.track]);
           const remoteSource = context.createMediaStreamSource(stream);
-          remoteSource.connect(receiverGain);
+          remoteSource.connect(remoteGain);
+          remoteSources.push(remoteSource);
         };
-        receiverGain.connect(receiverDestination);
+        remoteGain.connect(remoteDestination);
+
+        const bundle = {
+          sender,
+          receiver,
+          oscillator,
+          destination,
+          gain,
+          remoteSources
+        };
+        bundles.push(bundle);
 
         await connectPair(sender, receiver, destination.stream.getAudioTracks()[0]);
-
-        bundles.push({ sender, receiver, source, oscillator, destination, gain });
       }
 
-      const elapsedMs = Math.round(performance.now() - startedAt);
+      const setupMs = Math.round(performance.now() - startedAt);
+      const holdMs = 5000;
+
+      // Janela sustentada: deixa todos os codecs/jitter buffers e o mixer trabalharem.
+      await sleep(holdMs);
+
       let connected = 0;
       let packetsReceived = 0;
       let packetsLost = 0;
+      let maxRttMs: number | null = null;
+      let maxJitterMs: number | null = null;
 
       for (const bundle of bundles) {
         if (bundle.sender.connectionState === 'connected' && bundle.receiver.connectionState === 'connected') {
           connected += 1;
         }
+
         const stats = await bundle.receiver.getStats();
         for (const report of stats.values()) {
+          if (report.type === 'candidate-pair' && report.state === 'succeeded' && typeof report.currentRoundTripTime === 'number') {
+            const rttMs = Math.round(report.currentRoundTripTime * 1000);
+            maxRttMs = maxRttMs == null ? rttMs : Math.max(maxRttMs, rttMs);
+          }
           if (report.type === 'inbound-rtp' && report.kind === 'audio') {
             packetsReceived += Number(report.packetsReceived ?? 0);
             packetsLost += Number(report.packetsLost ?? 0);
+            if (typeof report.jitter === 'number') {
+              const jitterMs = Math.round(report.jitter * 1000);
+              maxJitterMs = maxJitterMs == null ? jitterMs : Math.max(maxJitterMs, jitterMs);
+            }
           }
         }
       }
 
+      const totalPackets = packetsReceived + packetsLost;
       setResult({
         contributors,
-        setupMs: Math.round(performance.now() - startedAt),
+        setupMs,
         connected,
-        elapsedMs,
+        holdMs,
         packetsReceived,
-        packetsLost
+        packetsLost,
+        lossPercent: totalPackets > 0 ? Number((packetsLost / totalPackets * 100).toFixed(2)) : 0,
+        maxRttMs,
+        maxJitterMs
       });
       bundlesRef.current = bundles;
     } catch (cause) {
-      for (const bundle of bundles) {
-        bundle.oscillator.stop();
-        bundle.sender.close();
-        bundle.receiver.close();
-      }
+      closeBundles(bundles);
       setError(cause instanceof Error ? cause.message : 'Falha no benchmark.');
     } finally {
       setRunning(false);
@@ -147,14 +198,9 @@ export function WebRtcAudioLoadBenchmark() {
   }
 
   function cleanup() {
-    for (const bundle of bundlesRef.current) {
-      try { bundle.oscillator.stop(); } catch {}
-      bundle.sender.close();
-      bundle.receiver.close();
-      bundle.source.disconnect();
-      bundle.gain.disconnect();
-    }
+    closeBundles(bundlesRef.current);
     bundlesRef.current = [];
+    setResult(null);
   }
 
   return (
@@ -167,7 +213,7 @@ export function WebRtcAudioLoadBenchmark() {
         <span className="tag">somente diagnóstico</span>
       </div>
       <p className="muted small-note">
-        Cria N conexões WebRTC locais com áudio sintético e mede o custo de negociação.
+        Cria N conexões WebRTC locais com áudio sintético e mantém todas ativas por 5 segundos.
         Não usa microfone real nem altera a capacidade da festa.
       </p>
       <div className="people-list">
@@ -180,8 +226,10 @@ export function WebRtcAudioLoadBenchmark() {
       {result && (
         <div className="small-note">
           <strong>{result.contributors} conexões:</strong> {result.connected}/{result.contributors} conectadas ·
-          negociação {result.setupMs} ms · pacotes recebidos {result.packetsReceived.toLocaleString('pt-BR')} ·
-          perdidos {result.packetsLost.toLocaleString('pt-BR')}
+          negociação {result.setupMs} ms · janela {result.holdMs / 1000}s ·
+          perda {result.lossPercent}% · RTT máx. {result.maxRttMs ?? '—'} ms ·
+          jitter máx. {result.maxJitterMs ?? '—'} ms ·
+          recebidos {result.packetsReceived.toLocaleString('pt-BR')}
         </div>
       )}
       {error && <div className="error">{error}</div>}
