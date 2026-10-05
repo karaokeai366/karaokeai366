@@ -3,14 +3,16 @@ import type { QueueEntry, SessionState } from './domain';
 import type { WebSocketTransport } from './wsTransport';
 import { getWebRtcConfiguration, isWebRtcSupported, type WebRtcSignal } from './webrtc';
 
-type SignalMessage = { id?: string; payload?: { command?: string; data?: WebRtcSignal } };
+type SignalMessage = { id?: string; payload?: { command?: string; data?: AudioSignal } };
+
+type AudioSignal = WebRtcSignal & { queueEntryId: string; performanceId: string };
 
 function sendAudioSignal(
   transport: WebSocketTransport,
   session: SessionState,
   senderId: string,
   kind: 'offer' | 'answer' | 'ice-candidate',
-  signal: WebRtcSignal
+  signal: AudioSignal
 ) {
   transport.sendRaw('session.command', session.sessionId, senderId, {
     command: `performance.audio.${kind}`,
@@ -188,7 +190,7 @@ export function PerformanceGuestMicrophone({
         if (!event.candidate || !transport) return;
         sendAudioSignal(transport, session, participantId, 'ice-candidate', {
           kind: 'ice-candidate', fromParticipantId: participantId, targetParticipantId: tv.id,
-          candidate: event.candidate.toJSON()
+          queueEntryId: playing.id, performanceId: playing.activePerformanceId ?? '', candidate: event.candidate.toJSON()
         });
       };
       peer.onconnectionstatechange = () => {
@@ -199,7 +201,7 @@ export function PerformanceGuestMicrophone({
       await peer.setLocalDescription(offer);
       sendAudioSignal(transport, session, participantId, 'offer', {
         kind: 'offer', fromParticipantId: participantId, targetParticipantId: tv.id,
-        sdp: peer.localDescription?.toJSON() ?? offer
+        queueEntryId: playing.id, performanceId: playing.activePerformanceId ?? '', sdp: peer.localDescription?.toJSON() ?? offer
       });
       transport.sendRaw('performance.audio.state', session.sessionId, participantId, {
         queueEntryId: playing.id,
@@ -351,7 +353,7 @@ export function TvMultiMicrophoneReceiver({
           if (!event.candidate || !transport) return;
           sendAudioSignal(transport, session, participantId, 'ice-candidate', {
             kind: 'ice-candidate', fromParticipantId: participantId, targetParticipantId: senderId,
-            candidate: event.candidate.toJSON()
+            queueEntryId: playing.id, performanceId: playing.activePerformanceId ?? '', candidate: event.candidate.toJSON()
           });
         };
         peer.onconnectionstatechange = () => {
@@ -364,7 +366,7 @@ export function TvMultiMicrophoneReceiver({
         await peer.setLocalDescription(answer);
         sendAudioSignal(transport, session, participantId, 'answer', {
           kind: 'answer', fromParticipantId: participantId, targetParticipantId: senderId,
-          sdp: peer.localDescription?.toJSON() ?? answer
+          queueEntryId: playing.id, performanceId: playing.activePerformanceId ?? '', sdp: peer.localDescription?.toJSON() ?? answer
         });
       } catch {
         closePeer(senderId);
