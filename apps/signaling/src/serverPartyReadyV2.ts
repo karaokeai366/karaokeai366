@@ -408,6 +408,12 @@ wss.on('connection', ws => {
         if (isPerformanceAudio) {
           const q = s.state.queue.find((x:any) => x.status === 'playing');
           if (!q) return fail(ws, 'Não há apresentação ativa para sinalização de áudio.');
+          if (String(data?.queueEntryId ?? '') !== String(q.id)) {
+            return fail(ws, 'A sinalização não pertence à apresentação em reprodução.');
+          }
+          if (String(data?.performanceId ?? '') !== String(q.activePerformanceId ?? '')) {
+            return fail(ws, 'A sinalização não pertence à tentativa atual.');
+          }
           const members = Array.isArray(q.performanceParticipants) ? q.performanceParticipants : [];
           if (c.participantId !== s.hostId && !members.some((x:any) => x.participantId === c.participantId && x.active)) {
             return fail(ws, 'Você não participa do áudio desta apresentação.');
