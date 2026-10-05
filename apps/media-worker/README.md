@@ -63,3 +63,20 @@ Downloads must be limited to media the user is authorized to access and process,
 ## Why a worker exists
 
 A browser/PWA cannot reliably execute arbitrary native binaries such as yt-dlp/ffmpeg on every Android/iOS browser. The worker is therefore an optional processing node. A future native mobile runtime can implement the same worker contract locally.
+## YouTube e autenticação
+
+O worker suporta um arquivo de cookies no formato Netscape para fontes que exigem autenticação ou apresentam desafios anti-bot. O arquivo **não deve ser versionado**.
+
+Defina:
+
+```text
+KARAOKE_YOUTUBE_COOKIES_FILE=/run/secrets/youtube-cookies.txt
+```
+
+No Docker, monte o arquivo exportado no caminho correspondente como somente leitura. Para execução nativa, a variável pode apontar diretamente para o arquivo local.
+
+O arquivo de cookies deve ser obtido pelo próprio usuário de uma sessão autorizada e tratado como credencial: não publique no GitHub, não coloque no `.env` versionado e não o envie para o frontend.
+
+O endpoint `/health` informa `youtube_cookies_configured` separadamente de `youtube_ready`. Assim, é possível distinguir dependências do yt-dlp/EJS/Deno de uma configuração de autenticação ausente.
+
+Se o Chrome do Windows apresentar erro de DPAPI dentro do worker Docker, não tente compartilhar o perfil do Chrome com o container. Exporte os cookies para um arquivo compatível e monte somente esse arquivo no worker.
