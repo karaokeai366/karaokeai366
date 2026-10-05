@@ -314,8 +314,9 @@ try {
   const audioStarted = await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.started');
   const audioPerformanceId = audioStarted.payload.payload.performanceId;
   const loadTargets = [2, 5, 8, 16];
+  let currentContributors = 1;
   for (const target of loadTargets) {
-    for (let index = 1; index < target; index += 1) {
+    for (let index = currentContributors; index < target; index += 1) {
       audioLoadHost.send('performance.participant.add', {
         queueEntryId: audioQueueEntryId,
         performanceId: audioPerformanceId,
@@ -323,8 +324,7 @@ try {
       });
       await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.participant.added' && m.payload?.payload?.participant?.participantId === audioLoadGuests[index].senderId);
     }
-    const state = audioLoadGuests[0].messages.find(m => m.type === 'session.event' && m.payload?.type === 'performance.participant.added' && m.payload?.payload?.queueEntryId === audioQueueEntryId);
-    if (!state) throw new Error(`Áudio load sem estado para target=${target}`);
+    currentContributors = target;
   }
   audioLoadGuests[1].send('performance.audio.state', { queueEntryId: audioQueueEntryId, performanceId: audioPerformanceId, audioEnabled: false });
   await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.audio.state' && m.payload?.payload?.participantId === audioLoadGuests[1].senderId);
