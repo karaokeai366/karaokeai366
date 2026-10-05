@@ -89,7 +89,8 @@ export interface SessionState {
   autoAdvance?: boolean;
   roundResultsByParticipant?: Record<string, RoundResult>;
   roundMode: RoundMode;
-  status: 'lobby' | 'playing' | 'finished';
+  pendingHostParticipantId?: string;
+  status: 'lobby' | 'playing' | 'paused' | 'finished';
 }
 
 export interface JoinPayload {
