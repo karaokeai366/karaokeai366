@@ -16,6 +16,7 @@ import { getWebRtcConfiguration, isWebRtcSupported, type WebRtcSignal } from './
 import { estimatePitch, pushPitchSample } from './pitchDetector';
 import { scorePerformance, suggestTranspositionSemitones, type MelodyReferenceNote, type PerformanceScore, type PitchSample } from '../../../packages/session/src/scoring';
 import { canRestart } from '../../../packages/session/src/restartPolicy';
+import { countConnectedParticipants } from '../../../packages/session/src/sessionCapacity';
 
 type View = 'home' | 'host' | 'join' | 'participant' | 'tv';
 
@@ -2815,7 +2816,7 @@ export function App() {
             <p className="muted">Pesquise a música, confira a capa e a versão desejada e coloque-a na fila com um toque.</p>
             <div className="connection-line">
               <span className={`connection-badge ${connection}`}>{connection === 'online' ? '🟢 conectado' : connection === 'offline' ? '🔴 offline' : '🟡 conectando'}</span>
-              <span>{session.participants.length} participante(s)</span>
+              <span>{countConnectedParticipants(session.participants)} participante(s) online</span>
               <span>· rodada {session.roundMode.kind === 'open' ? 'aberta' : session.roundMode.songCount + ' música(s)'}</span>
               {connection !== 'online' && (
                 <button type="button" className="link-button inline-reconnect" onClick={() => void reconnectCurrentSession()}>
@@ -2954,7 +2955,7 @@ export function App() {
           </div>
 
           <div className="stats-grid">
-            <div className="stat-card"><span>Participantes</span><strong>{session?.participants.length ?? 0}</strong></div>
+            <div className="stat-card"><span>Celulares ativos</span><strong>{session ? countConnectedParticipants(session.participants) : 0}</strong></div>
             <div className="stat-card"><span>Na fila</span><strong>{session?.queueSize ?? 0}</strong></div>
             <div className="stat-card"><span>Rodada</span><strong>{session?.roundMode.kind === 'open' ? '∞' : session?.roundMode.songCount ?? 1}</strong></div>
           </div>
