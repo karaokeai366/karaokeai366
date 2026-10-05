@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import type { QueueEntry, SessionState } from './domain';
 import { PerformanceGuestControls, PerformanceGuestMicrophone, TvMultiMicrophoneReceiver } from './MultiParticipantAudio';
+import { WebRtcAudioLoadBenchmark } from './WebRtcAudioLoadBenchmark';
 import {
   buildJoinUrl,
   buildTvJoinUrl,
@@ -1905,6 +1906,7 @@ function TvStage({
 
   return (
     <>
+      {new URLSearchParams(window.location.search).has('audio-benchmark') && <WebRtcAudioLoadBenchmark />}
       <TvMultiMicrophoneReceiver
         session={session}
         participantId={participantId}
