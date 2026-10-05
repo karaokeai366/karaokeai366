@@ -175,25 +175,47 @@ try {
   handoverTv.send('playback.finished', { queueEntryId: handoverQueueEntryId });
   await handoverTarget.waitFor(m => m.type === 'session.event' && m.payload?.type === 'host.changed' && m.payload?.payload?.appliedAfterPerformance === true);
 
-  // Queda do Host no meio de uma nova música também não permite takeover
-  // imediato; a apresentação continua e o Host original pode reconectar.
+  // Queda do Host no meio da música pausa imediatamente a apresentação.
+  // O mesmo performanceId/posição são preservados para permitir recuperação segura.
   handoverSinger.send('queue.add', { title: 'Handover Disconnect Song', artist: 'KaraokeAI', sourceId: 'handover-disconnect-source', durationSeconds: 120 });
   const disconnectAdded = await handoverSinger.waitFor(m => m.type === 'session.event' && m.payload?.type === 'queue.added' && m.payload?.payload?.entry?.title === 'Handover Disconnect Song');
   const disconnectQueueEntryId = disconnectAdded.payload.payload.entry.id;
   handoverSinger.send('queue.status.set', { queueEntryId: disconnectQueueEntryId, status: 'ready', durationSeconds: 120 });
   await handoverSinger.waitFor(m => m.type === 'session.event' && m.payload?.type === 'queue.updated' && m.payload?.payload?.queueEntryId === disconnectQueueEntryId);
   handoverTarget.send('queue.next');
-  await handoverSinger.waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.started' && m.payload?.payload?.queueEntryId === disconnectQueueEntryId);
+  const started = await handoverSinger.waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.started' && m.payload?.payload?.queueEntryId === disconnectQueueEntryId);
+  const disconnectPerformanceId = started.payload.payload.performanceId;
 
+  // Neste ponto o Target é o Host após a transferência voluntária acima.
   handoverTarget.ws.close();
-  await new Promise(resolve => setTimeout(resolve, 100));
-  handoverSinger.send('host.claim');
-  await handoverSinger.waitFor(m => m.type === 'session.error' && String(m.payload?.message ?? '').includes('música atual continua'));
+  const paused = await handoverSinger.waitFor(m =>
+    m.type === 'session.event' &&
+    m.payload?.type === 'performance.paused' &&
+    m.payload?.payload?.queueEntryId === disconnectQueueEntryId &&
+    m.payload?.payload?.reason === 'host_disconnected'
+  );
+  if (paused.payload.payload.performanceId !== disconnectPerformanceId) throw new Error('PerformanceId mudou ao pausar por queda do Host.');
+  if (!(Number(paused.payload.payload.playbackPositionSeconds) >= 0)) throw new Error('Posição inválida ao pausar por queda do Host.');
 
+  handoverSinger.send('host.claim');
+  await handoverSinger.waitFor(m => m.type === 'session.error' && String(m.payload?.message ?? '').includes('temporariamente desconectado'));
+
+  // O Host original retorna e a música continua pausada até ele mandar resume.
   const reconnectHost = client('smoke-handover-reconnect-host', handoverSessionId);
   await reconnectHost.waitOpen;
   reconnectHost.send('session.reconnect');
   await reconnectHost.waitFor(m => m.type === 'session.reconnected');
+  reconnectHost.send('playback.control', {
+    action: 'resume',
+    queueEntryId: disconnectQueueEntryId,
+    performanceId: disconnectPerformanceId
+  });
+  const resumed = await handoverSinger.waitFor(m =>
+    m.type === 'session.event' &&
+    m.payload?.type === 'performance.resumed' &&
+    m.payload?.payload?.queueEntryId === disconnectQueueEntryId
+  );
+  if (resumed.payload.payload.playbackStartedAt <= 0) throw new Error('Resume sem playbackStartedAt válido.');
   reconnectHost.ws.close();
 
   const lastParticipant = participants[47];
