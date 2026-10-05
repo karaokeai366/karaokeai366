@@ -65,11 +65,6 @@ function finishSong(s: Session, q: any) {
   s.state.queue = s.state.queue.map((x: any) => x.id === q.id ? updated : x); s.state.status = 'lobby';
   changed(s, 'performance.finished', { queueEntryId: q.id, status: 'completed' });
 
-  // A troca de Host nunca interrompe uma apresentação em andamento. Se o
-  // Host caiu durante a música, ela termina normalmente e a sessão fica
-  // parada antes de escolher o próximo cantor. Isso dá ao Host original a
-  // chance de reconectar e, depois do término, permite takeover seguro.
-  const hostOffline = person(s, s.hostId)?.online === false;
   if (s.state.pendingHostParticipantId) {
     const targetId = String(s.state.pendingHostParticipantId);
     const target = person(s, targetId);
