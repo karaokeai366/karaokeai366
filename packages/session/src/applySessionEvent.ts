@@ -116,7 +116,7 @@ export function applySessionEvent<T extends Record<string, any>>(
           ? { ...item, playbackState: 'paused', ...(payload.playbackPositionSeconds !== undefined ? { playbackPositionSeconds: payload.playbackPositionSeconds } : {}), ...(payload.reason === 'host_disconnected' ? { hostDisconnectPause: true } : {}) }
           : item
       );
-      return { ...state, queue: nextQueue };
+      return { ...state, queue: nextQueue, ...(payload.reason === 'host_disconnected' ? { status: 'paused' } : {}) };
     }
 
     case 'performance.resumed': {
