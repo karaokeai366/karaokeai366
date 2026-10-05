@@ -128,10 +128,14 @@ wss.on('connection', ws => {
     if (m.type === 'session.join') {
       if (!s) return fail(ws, 'Sessão não encontrada.');
       const role: Role = m.payload?.role === 'tv' ? 'tv' : 'participant';
-      if (role !== 'tv' && active(s) >= s.state.maxParticipants) return fail(ws, 'A sessão atingiu a capacidade de participantes.');
       if (s.clients.has(m.senderId)) return fail(ws, 'Este participante já está conectado.');
       let p = person(s, m.senderId);
       if (p && p.online !== false) return fail(ws, 'Este participante já está ativo nesta sessão.');
+      // A reconexão de uma identidade já existente não deve ser bloqueada pela
+      // capacidade: participantes offline não ocupam slot e podem retornar.
+      if (!p && role !== 'tv' && active(s) >= s.state.maxParticipants) {
+        return fail(ws, 'A sessão atingiu a capacidade de participantes.');
+      }
       if (p) { p.online = true; p.role = role; } else { p = { id: m.senderId, name: String(m.payload?.name ?? 'Participante').slice(0, 30), role, joinedAt: Date.now(), capabilities: m.payload?.capabilities ?? {}, online: true }; s.state.participants.push(p); }
       if (role !== 'tv') ensureCredits(s, m.senderId);
       const nc: Client = { socket: ws, sessionId: s.id, participantId: m.senderId, role }; s.clients.set(nc.participantId, nc); sockets.set(ws, nc);
