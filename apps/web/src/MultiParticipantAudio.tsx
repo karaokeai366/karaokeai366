@@ -302,12 +302,21 @@ export function TvMultiMicrophoneReceiver({
   }
 
   useEffect(() => {
+    if (!playing) {
+      for (const id of [...peersRef.current.keys()]) closePeer(id);
+      pendingIceRef.current.clear();
+      handledRef.current.clear();
+      return;
+    }
     for (const id of [...peersRef.current.keys()]) if (!guestIds.has(id)) closePeer(id);
-  }, [guestIds]);
+  }, [playing?.id, playing?.activePerformanceId, guestIds]);
 
   useEffect(() => () => {
     for (const id of [...peersRef.current.keys()]) closePeer(id);
+    pendingIceRef.current.clear();
+    handledRef.current.clear();
     audioContextRef.current?.close().catch(() => undefined);
+    audioContextRef.current = null;
   }, []);
 
   useEffect(() => {
