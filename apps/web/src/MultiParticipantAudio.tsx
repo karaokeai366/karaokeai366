@@ -342,8 +342,9 @@ export function TvMultiMicrophoneReceiver({
             audioSourcesRef.current.set(senderId, source);
             audioGainsRef.current.set(senderId, gain);
             if (audioUnlocked && context.state === 'suspended') void context.resume();
+          } else if (audioUnlocked) {
+            audio.play().catch(() => undefined);
           }
-          if (audioUnlocked) void audio.play().catch(() => undefined);
           redraw((value) => value + 1);
         };
         peer.onicecandidate = (event) => {
@@ -397,7 +398,9 @@ export function TvMultiMicrophoneReceiver({
       if (context.state === 'suspended') await context.resume().catch(() => undefined);
     }
     setAudioUnlocked(true);
-    await Promise.all([...audioNodesRef.current.values()].map((audio) => audio.play().catch(() => undefined)));
+    if (!audioContextRef.current) {
+      await Promise.all([...audioNodesRef.current.values()].map((audio) => audio.play().catch(() => undefined)));
+    }
   }
 
   if (!playing || guestIds.size === 0) return null;
