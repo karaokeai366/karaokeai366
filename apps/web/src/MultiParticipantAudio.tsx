@@ -263,6 +263,9 @@ export function TvMultiMicrophoneReceiver({
   const pendingIceRef = useRef(new Map<string, RTCIceCandidateInit[]>());
   const handledRef = useRef(new Set<string>());
   const audioNodesRef = useRef(new Map<string, HTMLAudioElement>());
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioSourcesRef = useRef(new Map<string, MediaStreamAudioSourceNode>());
+  const audioGainsRef = useRef(new Map<string, GainNode>());
   const [, redraw] = useState(0);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const guestIds = useMemo(() => new Set(
@@ -279,6 +282,10 @@ export function TvMultiMicrophoneReceiver({
     const audio = audioNodesRef.current.get(id);
     if (audio) { audio.pause(); audio.srcObject = null; audio.remove(); }
     audioNodesRef.current.delete(id);
+    audioSourcesRef.current.get(id)?.disconnect();
+    audioSourcesRef.current.delete(id);
+    audioGainsRef.current.get(id)?.disconnect();
+    audioGainsRef.current.delete(id);
     redraw((value) => value + 1);
   }
 
@@ -288,6 +295,7 @@ export function TvMultiMicrophoneReceiver({
 
   useEffect(() => () => {
     for (const id of [...peersRef.current.keys()]) closePeer(id);
+    audioContextRef.current?.close().catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -318,6 +326,23 @@ export function TvMultiMicrophoneReceiver({
             audioNodesRef.current.set(senderId, audio);
           }
           audio.srcObject = stream;
+          const AudioContextCtor = window.AudioContext
+            ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+          if (AudioContextCtor) {
+            const context = audioContextRef.current ?? new AudioContextCtor();
+            audioContextRef.current = context;
+            const previousSource = audioSourcesRef.current.get(senderId);
+            previousSource?.disconnect();
+            const previousGain = audioGainsRef.current.get(senderId);
+            previousGain?.disconnect();
+            const source = context.createMediaStreamSource(stream);
+            const gain = context.createGain();
+            gain.gain.value = 1;
+            source.connect(gain).connect(context.destination);
+            audioSourcesRef.current.set(senderId, source);
+            audioGainsRef.current.set(senderId, gain);
+            if (audioUnlocked && context.state === 'suspended') void context.resume();
+          }
           if (audioUnlocked) void audio.play().catch(() => undefined);
           redraw((value) => value + 1);
         };
@@ -364,6 +389,13 @@ export function TvMultiMicrophoneReceiver({
   }, [signals, participantId, guestIds]);
 
   async function unlockAudio() {
+    const AudioContextCtor = window.AudioContext
+      ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (AudioContextCtor) {
+      const context = audioContextRef.current ?? new AudioContextCtor();
+      audioContextRef.current = context;
+      if (context.state === 'suspended') await context.resume().catch(() => undefined);
+    }
     setAudioUnlocked(true);
     await Promise.all([...audioNodesRef.current.values()].map((audio) => audio.play().catch(() => undefined)));
   }
