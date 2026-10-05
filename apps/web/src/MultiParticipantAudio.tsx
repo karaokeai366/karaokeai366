@@ -432,6 +432,20 @@ export function TvMultiMicrophoneReceiver({
     else pendingIceRef.current.set(senderId, [...(pendingIceRef.current.get(senderId) ?? []), candidate]);
   }, [signals, participantId, guestIds]);
 
+  useEffect(() => {
+    setGuestVolumes((current) => {
+      const next = { ...current };
+      let changed = false;
+      for (const id of Object.keys(next)) {
+        if (!guestIds.has(id)) {
+          delete next[id];
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [guestIds]);
+
   function setGuestVolume(participantId: string, volume: number) {
     const normalized = Math.min(150, Math.max(0, Math.round(volume)));
     setGuestVolumes((current) => ({ ...current, [participantId]: normalized }));
