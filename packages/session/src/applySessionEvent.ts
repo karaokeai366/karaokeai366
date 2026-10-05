@@ -123,7 +123,7 @@ export function applySessionEvent<T extends Record<string, any>>(
       if (!payload?.queueEntryId) return state;
       const nextQueue = queue.map((item: any) =>
         item.id === payload.queueEntryId
-          ? { ...item, playbackState: 'playing', ...(payload.playbackStartedAt ? { playbackStartedAt: payload.playbackStartedAt } : {}) }
+          ? { ...item, playbackState: 'playing', hostDisconnectPause: undefined, ...(payload.playbackStartedAt ? { playbackStartedAt: payload.playbackStartedAt } : {}) }
           : item
       );
       return { ...state, queue: nextQueue };
