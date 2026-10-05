@@ -260,7 +260,26 @@ wss.on('connection', ws => {
         if (String(m.payload?.performanceId ?? '') !== String(q.activePerformanceId ?? '')) return fail(ws, 'A tentativa atual não corresponde à música em reprodução.');
         const newPerformanceId = q.id + '-' + Date.now() + '-' + randomUUID().slice(0, 8);
         s.state.restartCreditsByParticipant[c.participantId] = credits - 1;
-        const updated = { ...q, activePerformanceId: newPerformanceId, playbackStartedAt: Date.now(), playbackPositionSeconds: 0, playbackState: 'playing' };
+        const restartedParticipants = (Array.isArray(q.performanceParticipants) ? q.performanceParticipants : []).map((member:any) => ({
+          ...member,
+          audioEnabled: member.role === 'primary' ? true : false
+        }));
+        const restartedAudio = {
+          ...(q.performanceAudio ?? {}),
+          transport: q.performanceAudio?.transport ?? 'webrtc',
+          stageParticipantId: q.ownerParticipantId,
+          maxContributors: Number(q.performanceAudio?.maxContributors ?? maxPerformanceContributors),
+          contributors: restartedParticipants
+        };
+        const updated = {
+          ...q,
+          activePerformanceId: newPerformanceId,
+          playbackStartedAt: Date.now(),
+          playbackPositionSeconds: 0,
+          playbackState: 'playing',
+          performanceParticipants: restartedParticipants,
+          performanceAudio: restartedAudio
+        };
         s.state.queue = s.state.queue.map((x:any) => x.id === q.id ? updated : x);
         changed(s, 'performance.started', { queueEntryId: q.id, performanceId: newPerformanceId, restartedFromPerformanceId: q.activePerformanceId, remainingCredits: credits - 1 }, c.participantId, [c.participantId, ...s.state.participants.filter((p:any) => p.role === 'tv').map((p:any) => p.id)]);
         break;
