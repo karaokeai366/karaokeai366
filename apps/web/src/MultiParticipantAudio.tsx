@@ -321,7 +321,6 @@ export function TvMultiMicrophoneReceiver({
     for (const id of [...peersRef.current.keys()]) closePeer(id);
     pendingIceRef.current.clear();
     handledRef.current.clear();
-    audioContextRef.current?.close().catch(() => undefined);
     audioContextRef.current = null;
   }, []);
 
