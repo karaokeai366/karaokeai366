@@ -98,12 +98,16 @@ export function PerformanceGuestMicrophone({
   session,
   participantId,
   transport,
-  signals
+  signals,
+  audioContext,
+  voiceDestination
 }: {
   session: SessionState;
   participantId: string;
   transport: WebSocketTransport | null;
   signals: SignalMessage[];
+  audioContext?: AudioContext | null;
+  voiceDestination?: AudioNode | null;
 }) {
   const playing = activePerformance(session);
   const member = playing?.performanceParticipants?.find((item) => item.participantId === participantId);
@@ -160,6 +164,24 @@ export function PerformanceGuestMicrophone({
       pendingIceRef.current = [];
     }).catch(() => setError('Falha ao negociar o microfone adicional com a TV.'));
   }, [signals, active, participantId, tv?.id]);
+
+  useEffect(() => {
+    if (!audioContext || !voiceDestination) return;
+    audioContextRef.current = audioContext;
+    for (const [id, stream] of streamsRef.current) {
+      const previousSource = audioSourcesRef.current.get(id);
+      previousSource?.disconnect();
+      const previousGain = audioGainsRef.current.get(id);
+      previousGain?.disconnect();
+      const source = audioContext.createMediaStreamSource(stream);
+      const gain = audioContext.createGain();
+      gain.gain.value = 1;
+      source.connect(gain).connect(voiceDestination);
+      audioSourcesRef.current.set(id, source);
+      audioGainsRef.current.set(id, gain);
+    }
+    if (audioContext.state === 'suspended') void audioContext.resume();
+  }, [audioContext, voiceDestination]);
 
   useEffect(() => {
     const message = signals.find((item) => item.id
@@ -277,7 +299,7 @@ export function TvMultiMicrophoneReceiver({
   const pendingIceRef = useRef(new Map<string, RTCIceCandidateInit[]>());
   const handledRef = useRef(new Set<string>());
   const audioNodesRef = useRef(new Map<string, HTMLAudioElement>());
-  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(audioContext ?? null);
   const audioSourcesRef = useRef(new Map<string, MediaStreamAudioSourceNode>());
   const audioGainsRef = useRef(new Map<string, GainNode>());
   const [, redraw] = useState(0);
@@ -349,10 +371,8 @@ export function TvMultiMicrophoneReceiver({
             audioNodesRef.current.set(senderId, audio);
           }
           audio.srcObject = stream;
-          const AudioContextCtor = window.AudioContext
-            ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-          if (AudioContextCtor) {
-            const context = audioContextRef.current ?? new AudioContextCtor();
+          const context = audioContext ?? audioContextRef.current;
+          if (context && voiceDestination) {
             audioContextRef.current = context;
             const previousSource = audioSourcesRef.current.get(senderId);
             previousSource?.disconnect();
@@ -361,11 +381,11 @@ export function TvMultiMicrophoneReceiver({
             const source = context.createMediaStreamSource(stream);
             const gain = context.createGain();
             gain.gain.value = 1;
-            source.connect(gain).connect(context.destination);
+            source.connect(gain).connect(voiceDestination);
             audioSourcesRef.current.set(senderId, source);
             audioGainsRef.current.set(senderId, gain);
-            if (audioUnlocked && context.state === 'suspended') void context.resume();
-          } else if (audioUnlocked) {
+            if (context.state === 'suspended') void context.resume();
+          } else if (!voiceDestination && audioUnlocked) {
             audio.play().catch(() => undefined);
           }
           redraw((value) => value + 1);
@@ -393,7 +413,7 @@ export function TvMultiMicrophoneReceiver({
         closePeer(senderId);
       }
     })();
-  }, [signals, transport, participantId, playing?.id, guestIds, audioUnlocked]);
+  }, [signals, transport, participantId, playing?.id, playing?.activePerformanceId, guestIds, audioUnlocked, audioContext, voiceDestination]);
 
   useEffect(() => {
     const message = signals.find((item) => item.id
@@ -413,15 +433,10 @@ export function TvMultiMicrophoneReceiver({
   }, [signals, participantId, guestIds]);
 
   async function unlockAudio() {
-    const AudioContextCtor = window.AudioContext
-      ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (AudioContextCtor) {
-      const context = audioContextRef.current ?? new AudioContextCtor();
-      audioContextRef.current = context;
-      if (context.state === 'suspended') await context.resume().catch(() => undefined);
-    }
+    const context = audioContext ?? audioContextRef.current;
+    if (context && context.state === 'suspended') await context.resume().catch(() => undefined);
     setAudioUnlocked(true);
-    if (!audioContextRef.current) {
+    if (!voiceDestination) {
       await Promise.all([...audioNodesRef.current.values()].map((audio) => audio.play().catch(() => undefined)));
     }
   }
@@ -432,7 +447,7 @@ export function TvMultiMicrophoneReceiver({
   return (
     <div className="tv-multi-microphone">
       <span className="tag">🎤 {connected.length}/{guestIds.size} microfones extras</span>
-      {!audioUnlocked && <button className="secondary" type="button" onClick={() => void unlockAudio()}>🔊 Ativar vozes adicionais</button>}
+      {!audioContext && !audioUnlocked && <button className="secondary" type="button" onClick={() => void unlockAudio()}>🔊 Ativar vozes adicionais</button>}
     </div>
   );
 }
