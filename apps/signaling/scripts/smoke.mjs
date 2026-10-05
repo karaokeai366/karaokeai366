@@ -5,6 +5,7 @@ const url = `ws://127.0.0.1:${port}`;
 const sessionId = `smoke-${Date.now()}`;
 const soloSessionId = `smoke-solo-${Date.now()}`;
 const handoverSessionId = `smoke-handover-${Date.now()}`;
+const audioLoadSessionId = `smoke-audio-load-${Date.now()}`;
 const TIMEOUT = 15000;
 
 function client(senderId, clientSessionId = sessionId) {
@@ -80,11 +81,14 @@ const handoverSinger = client('smoke-handover-singer', handoverSessionId);
 const handoverTarget = client('smoke-handover-target', handoverSessionId);
 const handoverTv = client('smoke-handover-tv', handoverSessionId);
 const handoverGuest = client('smoke-handover-guest', handoverSessionId);
+const audioLoadHost = client('smoke-audio-load-host', audioLoadSessionId);
+const audioLoadTv = client('smoke-audio-load-tv', audioLoadSessionId);
+const audioLoadGuests = Array.from({ length: 15 }, (_, index) => client(`smoke-audio-load-guest-${index + 1}`, audioLoadSessionId));
 // Host + singer + 48 additional participants = exactly 50 active participants.
 const participants = Array.from({ length: 48 }, (_, index) => client(`smoke-party-${index + 1}`));
 
 try {
-  await openClients([host, singer, tv, overflow, soloHost, soloSinger, soloTv, handoverHost, handoverSinger, handoverTarget, handoverTv, handoverGuest, ...participants]);
+  await openClients([host, singer, tv, overflow, soloHost, soloSinger, soloTv, handoverHost, handoverSinger, handoverTarget, handoverTv, handoverGuest, audioLoadHost, audioLoadTv, ...audioLoadGuests, ...participants]);
 
   host.send('session.create', { name: 'Smoke Host', maxParticipants: 50 });
   await host.waitFor(m => m.type === 'session.created');
@@ -290,6 +294,50 @@ try {
     m.payload?.payload?.participantId === 'smoke-handover-guest'
   );
 
+  // Estresse determinístico do protocolo de áudio: 2, 5, 8 e 16 contribuidores.
+  // Não abre microfones reais; valida limite, estado, mute, sinalização e remoção em escala.
+  audioLoadHost.send('session.create', { name: 'Audio Load Host', maxParticipants: 16 });
+  await audioLoadHost.waitFor(m => m.type === 'session.created');
+  audioLoadTv.send('session.join', { name: 'Audio Load TV', role: 'tv' });
+  await audioLoadTv.waitFor(m => m.type === 'session.joined');
+  for (let index = 0; index < audioLoadGuests.length; index += 1) {
+    const guest = audioLoadGuests[index];
+    guest.send('session.join', { name: `Audio Guest ${index + 1}`, role: 'participant' });
+    await guest.waitFor(m => m.type === 'session.joined');
+  }
+  audioLoadGuests[0].send('queue.add', { title: 'Audio Load Song', artist: 'KaraokeAI', sourceId: 'audio-load-source' });
+  const audioAdded = await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'queue.added');
+  const audioQueueEntryId = audioAdded.payload.payload.entry.id;
+  audioLoadGuests[0].send('queue.status.set', { queueEntryId: audioQueueEntryId, status: 'ready' });
+  await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'queue.updated');
+  audioLoadHost.send('queue.next');
+  const audioStarted = await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.started');
+  const audioPerformanceId = audioStarted.payload.payload.performanceId;
+  const loadTargets = [2, 5, 8, 16];
+  for (const target of loadTargets) {
+    for (let index = 1; index < target; index += 1) {
+      audioLoadHost.send('performance.participant.add', {
+        queueEntryId: audioQueueEntryId,
+        performanceId: audioPerformanceId,
+        participantId: audioLoadGuests[index].senderId
+      });
+      await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.participant.added' && m.payload?.payload?.participant?.participantId === audioLoadGuests[index].senderId);
+    }
+    const state = audioLoadGuests[0].messages.find(m => m.type === 'session.event' && m.payload?.type === 'performance.participant.added' && m.payload?.payload?.queueEntryId === audioQueueEntryId);
+    if (!state) throw new Error(`Áudio load sem estado para target=${target}`);
+  }
+  audioLoadGuests[1].send('performance.audio.state', { queueEntryId: audioQueueEntryId, performanceId: audioPerformanceId, audioEnabled: false });
+  await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.audio.state' && m.payload?.payload?.participantId === audioLoadGuests[1].senderId);
+  audioLoadGuests[1].send('performance.audio.state', { queueEntryId: audioQueueEntryId, performanceId: audioPerformanceId, audioEnabled: true });
+  await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.audio.state' && m.payload?.payload?.participantId === audioLoadGuests[1].senderId && m.payload?.payload?.audioEnabled === true);
+  audioLoadHost.send('performance.participant.add', { queueEntryId: audioQueueEntryId, performanceId: audioPerformanceId, participantId: 'smoke-audio-overflow' });
+  await audioLoadHost.waitFor(m => m.type === 'session.error' && String(m.payload?.message ?? '').includes('microfones'));
+  for (let index = 1; index < audioLoadGuests.length; index += 1) {
+    audioLoadHost.send('performance.participant.remove', { queueEntryId: audioQueueEntryId, performanceId: audioPerformanceId, participantId: audioLoadGuests[index].senderId });
+    await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.participant.removed' && m.payload?.payload?.participantId === audioLoadGuests[index].senderId);
+  }
+  audioLoadHost.send('playback.control', { action: 'end', queueEntryId: audioQueueEntryId });
+  await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.finished' && m.payload?.payload?.queueEntryId === audioQueueEntryId);
   // Neste ponto o Target é o Host após a transferência voluntária acima.
   handoverTarget.ws.close();
   const paused = await handoverSinger.waitFor(m =>
@@ -330,10 +378,10 @@ try {
   reconnect.send('session.reconnect');
   await reconnect.waitFor(m => m.type === 'session.reconnected');
 
-  console.log('SIGNALING_PARTY_SMOKE_OK participants=50 queueLimit=3 capacity=1..50 role-controls=true reconnect=true multi-audio=true');
+  console.log('SIGNALING_PARTY_SMOKE_OK participants=50 queueLimit=3 capacity=1..50 role-controls=true reconnect=true multi-audio=true audio-load=2,5,8,16');
   try { reconnect.ws.close(); } catch {}
 } finally {
-  for (const c of [host, singer, tv, overflow, soloHost, soloSinger, soloTv, handoverHost, handoverSinger, handoverTarget, handoverTv, handoverGuest, ...participants]) {
+  for (const c of [host, singer, tv, overflow, soloHost, soloSinger, soloTv, handoverHost, handoverSinger, handoverTarget, handoverTv, handoverGuest, audioLoadHost, audioLoadTv, ...audioLoadGuests, ...participants]) {
     try { c.ws.close(); } catch {}
   }
 }
