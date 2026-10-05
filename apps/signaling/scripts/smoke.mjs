@@ -152,12 +152,14 @@ try {
   soloTv.send('session.join', { name: 'Solo TV', role: 'tv' });
   await soloTv.waitFor(m => m.type === 'session.joined');
 
-  handoverHost.send('session.create', { name: 'Handover Host', maxParticipants: 3 });
+  handoverHost.send('session.create', { name: 'Handover Host', maxParticipants: 4 });
   await handoverHost.waitFor(m => m.type === 'session.created');
   handoverSinger.send('session.join', { name: 'Handover Singer', role: 'participant' });
   await handoverSinger.waitFor(m => m.type === 'session.joined');
   handoverTarget.send('session.join', { name: 'Handover Target', role: 'participant' });
   await handoverTarget.waitFor(m => m.type === 'session.joined');
+  handoverGuest.send('session.join', { name: 'Handover Guest', role: 'participant' });
+  await handoverGuest.waitFor(m => m.type === 'session.joined');
   handoverTv.send('session.join', { name: 'Handover TV', role: 'tv' });
   await handoverTv.waitFor(m => m.type === 'session.joined');
 
