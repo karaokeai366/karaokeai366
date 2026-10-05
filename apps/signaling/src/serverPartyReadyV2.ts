@@ -70,16 +70,6 @@ function finishSong(s: Session, q: any) {
   // parada antes de escolher o próximo cantor. Isso dá ao Host original a
   // chance de reconectar e, depois do término, permite takeover seguro.
   const hostOffline = person(s, s.hostId)?.online === false;
-  if (hostOffline) {
-    s.state.status = 'paused';
-    changed(s, 'host.changed', {
-      hostParticipantId: s.hostId,
-      waitingForHostRecovery: true,
-      reason: 'performance_finished_host_offline'
-    });
-    return;
-  }
-
   if (s.state.pendingHostParticipantId) {
     const targetId = String(s.state.pendingHostParticipantId);
     const target = person(s, targetId);
@@ -189,6 +179,18 @@ wss.on('connection', ws => {
         p.role = 'host';
         s.hostDisconnectedAt = undefined;
         s.state.hostParticipantId = s.hostId;
+        const paused = s.state.queue.find((x: any) => x.status === 'playing' && x.hostDisconnectPause === true);
+        if (paused) {
+          changed(s, 'host.changed', {
+            hostParticipantId: s.hostId,
+            recovered: true,
+            performancePaused: true,
+            queueEntryId: paused.id,
+            performanceId: paused.activePerformanceId,
+            playbackPositionSeconds: paused.playbackPositionSeconds,
+            reason: 'host_reconnected'
+          }, m.senderId);
+        }
       }
       p.online = true; const nc: Client = { socket: ws, sessionId: s.id, participantId: m.senderId, role: p.role }; s.clients.set(m.senderId, nc); sockets.set(ws, nc);
       send(ws, 'session.reconnected', { sessionId: s.id, hostParticipantId: s.hostId, ...snapshot(s) }); return emit(s, 'participant.updated', { participant: p }, m.senderId);
@@ -238,7 +240,10 @@ wss.on('connection', ws => {
         if (!q && m.payload?.action !== 'end') return fail(ws, 'Não há música em reprodução.');
         const action = m.payload?.action;
         if (action === 'pause') { const updated = { ...q, playbackState: 'paused', playbackPositionSeconds: Number(m.payload?.positionSeconds ?? q.playbackPositionSeconds ?? 0) }; s.state.queue = s.state.queue.map((x:any) => x.id === q.id ? updated : x); changed(s, 'performance.paused', { queueEntryId: q.id, playbackPositionSeconds: updated.playbackPositionSeconds }, c.participantId); }
-        else if (action === 'resume') { const updated = { ...q, playbackState: 'playing', playbackStartedAt: Date.now() - Number(q.playbackPositionSeconds ?? 0) * 1000 }; s.state.queue = s.state.queue.map((x:any) => x.id === q.id ? updated : x); changed(s, 'performance.resumed', { queueEntryId: q.id, playbackStartedAt: updated.playbackStartedAt }, c.participantId); }
+        else if (action === 'resume') {
+          if (m.payload?.performanceId && String(m.payload.performanceId) !== String(q.activePerformanceId ?? '')) return fail(ws, 'A apresentação atual não corresponde ao performanceId informado.');
+          const position = Math.max(0, Number(q.playbackPositionSeconds ?? 0));
+          const updated = { ...q, playbackState: 'playing', playbackStartedAt: Date.now() - position * 1000, hostDisconnectPause: undefined }; s.state.queue = s.state.queue.map((x:any) => x.id === q.id ? updated : x); changed(s, 'performance.resumed', { queueEntryId: q.id, playbackStartedAt: updated.playbackStartedAt }, c.participantId); }
         else if (action === 'skip' || action === 'end') { finishSong(s, q ?? s.state.queue.find((x:any) => x.status === 'playing')); }
         else return fail(ws, 'Ação de reprodução inválida.');
         break;
@@ -306,8 +311,11 @@ wss.on('connection', ws => {
         // Nunca faça takeover no meio de uma apresentação: o Host original
         // pode reconectar e recuperar o controle até a música terminar.
         const playing = s.state.queue.find((x:any) => x.status === 'playing');
-        if (playing) {
-          return fail(ws,'O Host está desconectado, mas a música atual continua até o fim. A troca de Host ficará disponível após a apresentação.');
+        if (playing && playing.playbackState === 'playing') {
+          return fail(ws,'A apresentação está ativa. O novo Host só pode assumir após a música ficar em pause.');
+        }
+        if (playing && playing.playbackState === 'paused' && playing.hostDisconnectPause !== true) {
+          return fail(ws,'A apresentação está pausada pelo Host atual. Aguarde a recuperação do Host original.');
         }
 
         // Uma queda curta de Wi-Fi/rede não deve trocar o anfitrião. Dê ao
@@ -333,7 +341,41 @@ wss.on('connection', ws => {
     const c = sockets.get(ws); if (!c) return; sockets.delete(ws); const s = sessions.get(c.sessionId); if (!s) return; const p = person(s,c.participantId); if (p) p.online = false; s.clients.delete(c.participantId);
     if (c.participantId === s.hostId) {
       s.hostDisconnectedAt = Date.now();
-      for (const client of s.clients.values()) send(client.socket,'host.disconnected',{participantId:c.participantId});
+      s.state.pendingHostParticipantId = undefined;
+
+      const playing = s.state.queue.find((x: any) => x.status === 'playing');
+      if (playing) {
+        const startedAt = Number(playing.playbackStartedAt ?? Date.now());
+        const elapsed = playing.playbackState === 'playing'
+          ? Math.max(0, (Date.now() - startedAt) / 1000)
+          : Number(playing.playbackPositionSeconds ?? 0);
+        const duration = Number(playing.durationSeconds);
+        const position = Number.isFinite(duration) && duration > 0
+          ? Math.min(elapsed, duration)
+          : elapsed;
+        const updated = {
+          ...playing,
+          playbackState: 'paused',
+          playbackPositionSeconds: position,
+          hostDisconnectPause: true,
+          hostPausedAt: Date.now()
+        };
+        s.state.queue = s.state.queue.map((x: any) => x.id === playing.id ? updated : x);
+        s.state.status = 'paused';
+        changed(s, 'performance.paused', {
+          queueEntryId: playing.id,
+          performanceId: playing.activePerformanceId,
+          playbackPositionSeconds: position,
+          reason: 'host_disconnected'
+        }, c.participantId);
+      }
+
+      for (const client of s.clients.values()) send(client.socket,'host.disconnected',{
+        participantId:c.participantId,
+        performancePaused: Boolean(playing),
+        queueEntryId: playing?.id,
+        performanceId: playing?.activePerformanceId
+      });
     }
     if (p) emit(s,'participant.left',{participantId:c.participantId,participant:p},c.participantId);
   });
