@@ -292,6 +292,7 @@ export function TvMultiMicrophoneReceiver({
   const [guestVolumes, setGuestVolumes] = useState<Record<string, number>>({});
   const [guestDelays, setGuestDelays] = useState<Record<string, number>>({});
   const [guestRtt, setGuestRtt] = useState<Record<string, number | null>>({});
+  const [guestQuality, setGuestQuality] = useState<Record<string, { jitterMs: number | null; packetsLost: number | null; packetsReceived: number | null }>>({});
   const guestIds = useMemo(() => new Set(
     (playing?.performanceParticipants ?? [])
       .filter((item) => item.role === 'guest' && item.active)
@@ -396,12 +397,22 @@ export function TvMultiMicrophoneReceiver({
           if (peer.connectionState === 'connected' && !statsTimersRef.current.has(senderId)) {
             const timer = window.setInterval(() => {
               void peer.getStats().then((stats) => {
+                let rtt: number | null = null;
                 for (const report of stats.values()) {
                   if (report.type === 'candidate-pair' && report.state === 'succeeded' && typeof report.currentRoundTripTime === 'number') {
-                    setGuestRtt((current) => ({ ...current, [senderId]: Math.round(report.currentRoundTripTime * 1000) }));
-                    break;
+                    rtt = Math.round(report.currentRoundTripTime * 1000);
+                  }
+                  if (report.type === 'inbound-rtp' && report.kind === 'audio') {
+                    const jitterMs = typeof report.jitter === 'number' ? Math.round(report.jitter * 1000) : null;
+                    const packetsLost = typeof report.packetsLost === 'number' ? report.packetsLost : null;
+                    const packetsReceived = typeof report.packetsReceived === 'number' ? report.packetsReceived : null;
+                    setGuestQuality((current) => ({
+                      ...current,
+                      [senderId]: { jitterMs, packetsLost, packetsReceived }
+                    }));
                   }
                 }
+                if (rtt != null) setGuestRtt((current) => ({ ...current, [senderId]: rtt }));
               }).catch(() => undefined);
             }, 2000);
             statsTimersRef.current.set(senderId, timer);
@@ -486,20 +497,16 @@ export function TvMultiMicrophoneReceiver({
       }
       return changed ? next : current;
     });
-  }, [guestIds]);
-
-
+    setGuestQuality((current) => {
       const next = { ...current };
       let changed = false;
       for (const id of Object.keys(next)) {
-        if (!guestIds.has(id)) {
-          delete next[id];
-          changed = true;
-        }
+        if (!guestIds.has(id)) { delete next[id]; changed = true; }
       }
       return changed ? next : current;
     });
   }, [guestIds]);
+
 
   function setGuestDelay(participantId: string, delayMs: number) {
     const normalized = Math.min(250, Math.max(0, Math.round(delayMs / 5) * 5));
@@ -568,7 +575,7 @@ export function TvMultiMicrophoneReceiver({
             <label className="tv-guest-volume" key={id}>
               <span>
                 <strong>{person?.name ?? 'Convidado'}</strong>
-                <small>{connectedNow ? 'conectado' : 'aguardando microfone'} · volume {volume}% · atraso {guestDelays[id] ?? 0} ms{guestRtt[id] != null ? ' · RTT ' + guestRtt[id] + ' ms' : ''}</small>
+                <small>{connectedNow ? 'conectado' : 'aguardando microfone'} · volume {volume}% · atraso {guestDelays[id] ?? 0} ms{guestRtt[id] != null ? ' · RTT ' + guestRtt[id] + ' ms' : ''}{guestQuality[id]?.jitterMs != null ? ' · jitter ' + guestQuality[id]!.jitterMs + ' ms' : ''}</small>
               </span>
               <input
                 type="range"
