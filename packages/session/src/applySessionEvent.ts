@@ -49,6 +49,12 @@ export function applySessionEvent<T extends Record<string, any>>(
         ...(payload?.state ?? {})
       };
 
+    case 'host.transfer.pending':
+      return {
+        ...state,
+        pendingHostParticipantId: payload?.targetParticipantId
+      };
+
     case 'queue.added': {
       if (!payload?.entry?.id) return state;
       const nextQueue = [...queue];
