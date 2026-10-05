@@ -24,6 +24,26 @@ export interface Participant {
   online: boolean;
 }
 
+export type PerformanceParticipantRole = 'primary' | 'guest';
+
+export interface PerformanceParticipant {
+  participantId: string;
+  role: PerformanceParticipantRole;
+  joinedAt: number;
+  active: boolean;
+  audioEnabled: boolean;
+  scoringEnabled: boolean;
+}
+
+export type PerformanceAudioTransport = 'webrtc' | 'sfu';
+
+export interface PerformanceAudioState {
+  transport: PerformanceAudioTransport;
+  stageParticipantId: string;
+  maxContributors: number;
+  contributors: PerformanceParticipant[];
+}
+
 export interface PerformanceAttempt {
   performanceId: string;
   startedAt: number;
@@ -70,6 +90,8 @@ export interface QueueEntry {
   hostPausedAt?: number;
   durationSeconds?: number;
   activePerformanceId?: string;
+  performanceParticipants?: PerformanceParticipant[];
+  performanceAudio?: PerformanceAudioState;
   attempts?: PerformanceAttempt[];
   score?: PerformanceScore;
   addedAt: number;

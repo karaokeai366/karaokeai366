@@ -139,6 +139,48 @@ export function applySessionEvent<T extends Record<string, any>>(
       return { ...state, queue: nextQueue, queueSize: nextQueue.length };
     }
 
+    case 'performance.participant.added': {
+      if (!payload?.queueEntryId || !payload?.participant) return state;
+      const nextQueue = queue.map((item: any) => {
+        if (item.id !== payload.queueEntryId) return item;
+        const current = Array.isArray(item.performanceParticipants) ? item.performanceParticipants : [];
+        const participant = payload.participant;
+        const next = current.some((entry: any) => entry.participantId === participant.participantId)
+          ? current.map((entry: any) => entry.participantId === participant.participantId ? participant : entry)
+          : [...current, participant];
+        return {
+          ...item,
+          performanceParticipants: next,
+          performanceAudio: payload.audio ?? item.performanceAudio
+        };
+      });
+      return { ...state, queue: nextQueue, queueSize: nextQueue.length };
+    }
+
+    case 'performance.participant.removed': {
+      if (!payload?.queueEntryId || !payload?.participantId) return state;
+      const nextQueue = queue.map((item: any) => {
+        if (item.id !== payload.queueEntryId) return item;
+        const current = Array.isArray(item.performanceParticipants) ? item.performanceParticipants : [];
+        return {
+          ...item,
+          performanceParticipants: current.filter((entry: any) => entry.participantId !== payload.participantId),
+          performanceAudio: payload.audio ?? item.performanceAudio
+        };
+      });
+      return { ...state, queue: nextQueue, queueSize: nextQueue.length };
+    }
+
+    case 'performance.audio.state': {
+      if (!payload?.queueEntryId) return state;
+      const nextQueue = queue.map((item: any) =>
+        item.id === payload.queueEntryId
+          ? { ...item, performanceAudio: payload.audio ?? item.performanceAudio }
+          : item
+      );
+      return { ...state, queue: nextQueue, queueSize: nextQueue.length };
+    }
+
     case 'performance.scored': {
       if (!payload?.queueEntryId) return state;
       const nextQueue = queue.map((item: any) =>

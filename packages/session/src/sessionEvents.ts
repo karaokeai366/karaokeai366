@@ -14,6 +14,9 @@ export type SessionEventType =
   | 'performance.resumed'
   | 'performance.finished'
   | 'performance.scored'
+  | 'performance.participant.added'
+  | 'performance.participant.removed'
+  | 'performance.audio.state'
   | 'round.updated'
   | 'session.settings.changed';
 
