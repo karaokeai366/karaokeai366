@@ -162,24 +162,6 @@ export function PerformanceGuestMicrophone({
   }, [signals, active, participantId, tv?.id]);
 
   useEffect(() => {
-    if (!audioContext || !voiceDestination) return;
-    audioContextRef.current = audioContext;
-    for (const [id, stream] of streamsRef.current) {
-      const previousSource = audioSourcesRef.current.get(id);
-      previousSource?.disconnect();
-      const previousGain = audioGainsRef.current.get(id);
-      previousGain?.disconnect();
-      const source = audioContext.createMediaStreamSource(stream);
-      const gain = audioContext.createGain();
-      gain.gain.value = 1;
-      source.connect(gain).connect(voiceDestination);
-      audioSourcesRef.current.set(id, source);
-      audioGainsRef.current.set(id, gain);
-    }
-    if (audioContext.state === 'suspended') void audioContext.resume();
-  }, [audioContext, voiceDestination]);
-
-  useEffect(() => {
     const message = signals.find((item) => item.id
       && !handledRef.current.has(item.id)
       && item.payload?.command === 'performance.audio.ice-candidate'
@@ -414,6 +396,24 @@ export function TvMultiMicrophoneReceiver({
       }
     })();
   }, [signals, transport, participantId, playing?.id, playing?.activePerformanceId, guestIds, audioUnlocked, audioContext, voiceDestination]);
+
+  useEffect(() => {
+    if (!audioContext || !voiceDestination) return;
+    audioContextRef.current = audioContext;
+    for (const [id, stream] of streamsRef.current) {
+      const previousSource = audioSourcesRef.current.get(id);
+      previousSource?.disconnect();
+      const previousGain = audioGainsRef.current.get(id);
+      previousGain?.disconnect();
+      const source = audioContext.createMediaStreamSource(stream);
+      const gain = audioContext.createGain();
+      gain.gain.value = 1;
+      source.connect(gain).connect(voiceDestination);
+      audioSourcesRef.current.set(id, source);
+      audioGainsRef.current.set(id, gain);
+    }
+    if (audioContext.state === 'suspended') void audioContext.resume();
+  }, [audioContext, voiceDestination]);
 
   useEffect(() => {
     const message = signals.find((item) => item.id
