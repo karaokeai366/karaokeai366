@@ -201,7 +201,7 @@ try {
   await handoverSinger.waitFor(m => m.type === 'session.error' && String(m.payload?.message ?? '').includes('temporariamente desconectado'));
 
   // O Host original retorna e a música continua pausada até ele mandar resume.
-  const reconnectHost = client('smoke-handover-reconnect-host', handoverSessionId);
+  const reconnectHost = client('smoke-handover-target', handoverSessionId);
   await reconnectHost.waitOpen;
   reconnectHost.send('session.reconnect');
   await reconnectHost.waitFor(m => m.type === 'session.reconnected');
