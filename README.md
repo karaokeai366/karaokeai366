@@ -184,7 +184,7 @@ MAX_SONGS_PER_PARTICIPANT=3
 LEGACY_SNAPSHOT_BROADCAST=true
 ```
 
-The signaling service runs `src/serverPartyReadyFixed.ts` by default.
+The signaling service runs `src/serverPartyReadyV2.ts` by default.
 
 ## Local development
 
