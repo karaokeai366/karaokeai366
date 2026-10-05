@@ -234,6 +234,7 @@ export function PerformanceGuestMicrophone({
     setMuted(nextMuted);
     transport.sendRaw('performance.audio.state', session.sessionId, participantId, {
       queueEntryId: playing.id,
+      performanceId: playing.activePerformanceId ?? '',
       audioEnabled: !nextMuted
     });
   }
@@ -420,7 +421,7 @@ export function TvMultiMicrophoneReceiver({
         closePeer(senderId);
       }
     })();
-  }, [signals, transport, participantId, playing?.id, playing?.activePerformanceId, guestIds, audioUnlocked, audioContext, voiceDestination, guestVolumes, guestDelays]);
+  }, [signals, transport, participantId, playing?.id, playing?.activePerformanceId, guestIds, audioUnlocked, audioContext, voiceDestination]);
 
   useEffect(() => {
     if (!audioContext || !voiceDestination) return;
@@ -507,6 +508,31 @@ export function TvMultiMicrophoneReceiver({
     if (delay) delay.delayTime.value = normalized / 1000;
   }
 
+  function calibrateGuests() {
+    const measured = [...guestIds]
+      .map((id) => ({ id, rtt: guestRtt[id] }))
+      .filter((item): item is { id: string; rtt: number } => typeof item.rtt === 'number');
+    if (measured.length < 2) return;
+    const maxRtt = Math.max(...measured.map((item) => item.rtt));
+    const next: Record<string, number> = {};
+    for (const item of measured) {
+      const suggested = Math.min(250, Math.max(0, Math.round((maxRtt - item.rtt) / 2 / 5) * 5));
+      next[item.id] = suggested;
+      const delay = audioDelaysRef.current.get(item.id);
+      if (delay) delay.delayTime.value = suggested / 1000;
+    }
+    setGuestDelays((current) => ({ ...current, ...next }));
+  }
+
+  useEffect(() => {
+    for (const [id, gain] of audioGainsRef.current) {
+      gain.gain.value = (guestVolumes[id] ?? 100) / 100;
+    }
+    for (const [id, delay] of audioDelaysRef.current) {
+      delay.delayTime.value = (guestDelays[id] ?? 0) / 1000;
+    }
+  }, [guestVolumes, guestDelays]);
+
   function setGuestVolume(participantId: string, volume: number) {
     const normalized = Math.min(150, Math.max(0, Math.round(volume)));
     setGuestVolumes((current) => ({ ...current, [participantId]: normalized }));
@@ -530,6 +556,7 @@ export function TvMultiMicrophoneReceiver({
     <div className="tv-multi-microphone">
       <div className="tv-multi-microphone-heading">
         <span className="tag">🎤 {connected.length}/{guestIds.size} microfones extras</span>
+        {connected.length >= 2 && <button className="secondary" type="button" onClick={calibrateGuests}>⚙️ Calibrar atraso</button>}
         {!audioContext && !audioUnlocked && <button className="secondary" type="button" onClick={() => void unlockAudio()}>🔊 Ativar vozes adicionais</button>}
       </div>
       <div className="tv-multi-microphone-list">
