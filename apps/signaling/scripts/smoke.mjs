@@ -3,6 +3,7 @@ import { WebSocket } from 'ws';
 const port = Number(process.env.PORT ?? 8787);
 const url = `ws://127.0.0.1:${port}`;
 const sessionId = `smoke-${Date.now()}`;
+const soloSessionId = `smoke-solo-${Date.now()}`;
 const TIMEOUT = 15000;
 
 function client(senderId) {
@@ -69,11 +70,15 @@ async function openClients(clients, batchSize = 10) {
 const host = client('smoke-host');
 const singer = client('smoke-singer');
 const tv = client('smoke-tv');
+const overflow = client('smoke-overflow');
+const soloHost = client('smoke-solo-host');
+const soloSinger = client('smoke-solo-singer');
+const soloTv = client('smoke-solo-tv');
 // Host + singer + 48 additional participants = exactly 50 active participants.
 const participants = Array.from({ length: 48 }, (_, index) => client(`smoke-party-${index + 1}`));
 
 try {
-  await openClients([host, singer, tv, ...participants]);
+  await openClients([host, singer, tv, overflow, soloHost, soloSinger, soloTv, ...participants]);
 
   host.send('session.create', { name: 'Smoke Host', maxParticipants: 50 });
   await host.waitFor(m => m.type === 'session.created');
@@ -88,6 +93,9 @@ try {
     participant.send('session.join', { name: `Party ${index + 1}`, role: 'participant' });
     await participant.waitFor(m => m.type === 'session.joined');
   }
+
+  overflow.send('session.join', { name: 'Overflow', role: 'participant' });
+  await overflow.waitFor(m => m.type === 'session.error' && String(m.payload?.message ?? '').includes('capacidade'));
 
   const first = participants[0];
   for (let song = 1; song <= 3; song += 1) {
@@ -113,6 +121,12 @@ try {
 
   host.send('queue.next');
   await first.waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.started');
+  singer.send('playback.control', { action: 'pause', queueEntryId });
+  await singer.waitFor(m => m.type === 'session.error' && String(m.payload?.message ?? '').includes('Somente o Host'));
+  host.send('playback.control', { action: 'pause', queueEntryId, positionSeconds: 10 });
+  await first.waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.paused');
+  host.send('playback.control', { action: 'resume', queueEntryId });
+  await first.waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.resumed');
   await tv.waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.started');
 
   tv.send('playback.finished', { queueEntryId });
@@ -125,6 +139,13 @@ try {
   });
   await first.waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.scored');
 
+  soloHost.send('session.create', { name: 'Solo Host', maxParticipants: 1 });
+  await soloHost.waitFor(m => m.type === 'session.created');
+  soloSinger.send('session.join', { name: 'Solo Singer', role: 'participant' });
+  await soloSinger.waitFor(m => m.type === 'session.error' && String(m.payload?.message ?? '').includes('capacidade'));
+  soloTv.send('session.join', { name: 'Solo TV', role: 'tv' });
+  await soloTv.waitFor(m => m.type === 'session.joined');
+
   const lastParticipant = participants[47];
   lastParticipant.ws.close();
   await new Promise(resolve => setTimeout(resolve, 100));
@@ -133,10 +154,10 @@ try {
   reconnect.send('session.reconnect');
   await reconnect.waitFor(m => m.type === 'session.reconnected');
 
-  console.log('SIGNALING_PARTY_SMOKE_OK participants=50 queueLimit=3 reconnect=true');
+  console.log('SIGNALING_PARTY_SMOKE_OK participants=50 queueLimit=3 capacity=1..50 role-controls=true reconnect=true');
   try { reconnect.ws.close(); } catch {}
 } finally {
-  for (const c of [host, singer, tv, ...participants]) {
+  for (const c of [host, singer, tv, overflow, soloHost, soloSinger, soloTv, ...participants]) {
     try { c.ws.close(); } catch {}
   }
 }
