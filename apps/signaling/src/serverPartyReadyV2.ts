@@ -5,11 +5,12 @@ type Role = 'host' | 'participant' | 'tv';
 type Client = { socket: WebSocket; sessionId: string; participantId: string; role: Role };
 type Message = { type?: string; sessionId?: string; senderId?: string; payload?: any };
 type Session = { id: string; hostId: string; state: any; clients: Map<string, Client>; sequence: number; hostDisconnectedAt?: number };
-type EventType = 'participant.joined' | 'participant.left' | 'participant.updated' | 'host.changed' | 'host.transfer.pending' | 'queue.added' | 'queue.updated' | 'queue.removed' | 'queue.next' | 'singer.called' | 'performance.started' | 'performance.paused' | 'performance.resumed' | 'performance.finished' | 'performance.scored' | 'round.updated' | 'session.settings.changed';
+type EventType = 'participant.joined' | 'participant.left' | 'participant.updated' | 'host.changed' | 'host.transfer.pending' | 'queue.added' | 'queue.updated' | 'queue.removed' | 'queue.next' | 'singer.called' | 'performance.started' | 'performance.paused' | 'performance.resumed' | 'performance.finished' | 'performance.scored' | 'performance.participant.added' | 'performance.participant.removed' | 'performance.audio.state' | 'round.updated' | 'session.settings.changed';
 
 const port = Number(process.env.PORT ?? 8787);
 const defaultCapacity = clamp(Number(process.env.DEFAULT_SESSION_CAPACITY ?? 50), 1, 50);
 const maxSongs = clamp(Number(process.env.MAX_SONGS_PER_PARTICIPANT ?? 3), 1, 20);
+const maxPerformanceContributors = clamp(Number(process.env.MAX_PERFORMANCE_CONTRIBUTORS ?? 8), 2, 16);
 const sessions = new Map<string, Session>();
 const sockets = new Map<WebSocket, Client>();
 
@@ -54,7 +55,9 @@ function nextSong(s: Session) {
 }
 function startSong(s: Session, q: any) {
   const now = Date.now(); const performanceId = `${q.id}-${now}-${randomUUID().slice(0, 8)}`;
-  const updated = { ...q, status: 'playing', playbackStartedAt: now, playbackPositionSeconds: 0, playbackState: 'playing', activePerformanceId: performanceId };
+  const primary = { participantId: q.ownerParticipantId, role: 'primary', joinedAt: now, active: true, audioEnabled: true, scoringEnabled: true };
+  const performanceAudio = { transport: 'webrtc', stageParticipantId: q.ownerParticipantId, maxContributors: maxPerformanceContributors, contributors: [primary] };
+  const updated = { ...q, status: 'playing', playbackStartedAt: now, playbackPositionSeconds: 0, playbackState: 'playing', activePerformanceId: performanceId, performanceParticipants: [primary], performanceAudio };
   s.state.queue = s.state.queue.map((x: any) => x.id === q.id ? updated : x); s.state.status = 'playing';
   changed(s, 'queue.next', { queueEntryId: q.id, participantId: q.ownerParticipantId, playbackStartedAt: now, performanceId }, q.ownerParticipantId);
   emit(s, 'singer.called', { queueEntryId: q.id, participantId: q.ownerParticipantId, playbackStartedAt: now, performanceId }, q.ownerParticipantId);
@@ -262,6 +265,76 @@ wss.on('connection', ws => {
         changed(s, 'performance.started', { queueEntryId: q.id, performanceId: newPerformanceId, restartedFromPerformanceId: q.activePerformanceId, remainingCredits: credits - 1 }, c.participantId, [c.participantId, ...s.state.participants.filter((p:any) => p.role === 'tv').map((p:any) => p.id)]);
         break;
       }
+      case 'performance.participant.add': {
+        const q = s.state.queue.find((x:any) => x.id === String(m.payload?.queueEntryId ?? ''));
+        if (!q || q.status !== 'playing') return fail(ws, 'Não há apresentação ativa para adicionar participante.');
+        const actorIsHost = c.participantId === s.hostId;
+        const actorIsPrimary = q.ownerParticipantId === c.participantId;
+        if (!actorIsHost && !actorIsPrimary) return fail(ws, 'Somente o Host ou o cantor principal pode adicionar participante.');
+        const targetId = String(m.payload?.participantId ?? '');
+        const target = person(s, targetId);
+        if (!target || target.role === 'tv' || target.online === false) return fail(ws, 'Participante inválido ou offline.');
+        const current = Array.isArray(q.performanceParticipants) ? q.performanceParticipants : [];
+        if (current.some((x:any) => x.participantId === targetId)) return fail(ws, 'Este participante já está nesta apresentação.');
+        if (current.length >= Number(q.performanceAudio?.maxContributors ?? maxPerformanceContributors)) {
+          return fail(ws, 'A apresentação atingiu o limite de participantes de áudio.');
+        }
+        const guest = {
+          participantId: targetId,
+          role: 'guest',
+          joinedAt: Date.now(),
+          active: true,
+          audioEnabled: true,
+          scoringEnabled: false
+        };
+        const contributors = [...current, guest];
+        const audio = {
+          transport: q.performanceAudio?.transport ?? 'webrtc',
+          stageParticipantId: q.ownerParticipantId,
+          maxContributors: Number(q.performanceAudio?.maxContributors ?? maxPerformanceContributors),
+          contributors
+        };
+        const updated = { ...q, performanceParticipants: contributors, performanceAudio: audio };
+        s.state.queue = s.state.queue.map((x:any) => x.id === q.id ? updated : x);
+        changed(s, 'performance.participant.added', { queueEntryId:q.id, performanceId:q.activePerformanceId, participant:guest, audio }, c.participantId);
+        break;
+      }
+      case 'performance.participant.remove': {
+        const q = s.state.queue.find((x:any) => x.id === String(m.payload?.queueEntryId ?? ''));
+        if (!q || q.status !== 'playing') return fail(ws, 'Não há apresentação ativa para remover participante.');
+        const actorIsHost = c.participantId === s.hostId;
+        const actorIsPrimary = q.ownerParticipantId === c.participantId;
+        if (!actorIsHost && !actorIsPrimary) return fail(ws, 'Somente o Host ou o cantor principal pode remover participante.');
+        const targetId = String(m.payload?.participantId ?? '');
+        if (targetId === q.ownerParticipantId) return fail(ws, 'O cantor principal não pode ser removido da apresentação.');
+        const current = Array.isArray(q.performanceParticipants) ? q.performanceParticipants : [];
+        if (!current.some((x:any) => x.participantId === targetId)) return fail(ws, 'Participante não encontrado na apresentação.');
+        const contributors = current.filter((x:any) => x.participantId !== targetId);
+        const audio = {
+          transport: q.performanceAudio?.transport ?? 'webrtc',
+          stageParticipantId: q.ownerParticipantId,
+          maxContributors: Number(q.performanceAudio?.maxContributors ?? maxPerformanceContributors),
+          contributors
+        };
+        const updated = { ...q, performanceParticipants: contributors, performanceAudio: audio };
+        s.state.queue = s.state.queue.map((x:any) => x.id === q.id ? updated : x);
+        changed(s, 'performance.participant.removed', { queueEntryId:q.id, performanceId:q.activePerformanceId, participantId:targetId, audio }, c.participantId);
+        break;
+      }
+      case 'performance.audio.state': {
+        const q = s.state.queue.find((x:any) => x.id === String(m.payload?.queueEntryId ?? ''));
+        if (!q || q.status !== 'playing') return fail(ws, 'Não há apresentação ativa.');
+        const current = Array.isArray(q.performanceParticipants) ? q.performanceParticipants : [];
+        const contributor = current.find((x:any) => x.participantId === c.participantId);
+        if (!contributor && c.participantId !== s.hostId) return fail(ws, 'Você não participa do áudio desta apresentação.');
+        const audioEnabled = Boolean(m.payload?.audioEnabled);
+        const contributors = current.map((x:any) => x.participantId === c.participantId ? { ...x, audioEnabled } : x);
+        const audio = { ...(q.performanceAudio ?? {}), transport: q.performanceAudio?.transport ?? 'webrtc', stageParticipantId:q.ownerParticipantId, maxContributors:Number(q.performanceAudio?.maxContributors ?? maxPerformanceContributors), contributors };
+        const updated = { ...q, performanceParticipants: contributors, performanceAudio: audio };
+        s.state.queue = s.state.queue.map((x:any) => x.id === q.id ? updated : x);
+        changed(s, 'performance.audio.state', { queueEntryId:q.id, performanceId:q.activePerformanceId, audio }, c.participantId);
+        break;
+      }
       case 'performance.complete': {
         const q = s.state.queue.find((x:any) => x.id === String(m.payload?.queueEntryId ?? ''));
         if (!q || q.ownerParticipantId !== c.participantId || q.status !== 'completed') return fail(ws, 'A apresentação não pode receber esta pontuação.');
@@ -326,8 +399,34 @@ wss.on('connection', ws => {
         for (const p of s.state.participants) if (p.role !== 'tv') ensureCredits(s,p.id); changed(s,'round.updated',{state:{roundId:s.state.roundId,roundMode:s.state.roundMode,roundResultsByParticipant:s.state.roundResultsByParticipant,restartCreditsByParticipant:s.state.restartCreditsByParticipant}},c.participantId); break;
       }
       case 'session.command': {
-        const command = String(m.payload?.command ?? ''); const data = m.payload?.data; if (!command.startsWith('webrtc.')) return fail(ws,'Comando de sessão inválido.');
-        const target = String(data?.targetParticipantId ?? ''); const recipient = s.clients.get(target); if (recipient) send(recipient.socket,'session.command',m.payload); break;
+        const command = String(m.payload?.command ?? '');
+        const data = m.payload?.data;
+        const isWebRtc = command.startsWith('webrtc.');
+        const isPerformanceAudio = command.startsWith('performance.audio.');
+        if (!isWebRtc && !isPerformanceAudio) return fail(ws,'Comando de sessão inválido.');
+
+        if (isPerformanceAudio) {
+          const q = s.state.queue.find((x:any) => x.status === 'playing');
+          if (!q) return fail(ws, 'Não há apresentação ativa para sinalização de áudio.');
+          const members = Array.isArray(q.performanceParticipants) ? q.performanceParticipants : [];
+          if (c.participantId !== s.hostId && !members.some((x:any) => x.participantId === c.participantId && x.active)) {
+            return fail(ws, 'Você não participa do áudio desta apresentação.');
+          }
+          const target = String(data?.targetParticipantId ?? '');
+          const recipient = s.clients.get(target);
+          if (!recipient) return fail(ws, 'Destino de áudio não conectado.');
+          if (recipient.role === 'tv' || target === s.hostId || c.participantId === s.hostId || members.some((x:any) => x.participantId === target && x.active)) {
+            send(recipient.socket,'session.command',m.payload);
+          } else {
+            return fail(ws, 'Destino não participa do áudio desta apresentação.');
+          }
+          break;
+        }
+
+        const target = String(data?.targetParticipantId ?? '');
+        const recipient = s.clients.get(target);
+        if (recipient) send(recipient.socket,'session.command',m.payload);
+        break;
       }
       default: return fail(ws, `Comando não suportado: ${String(m.type ?? '')}`);
     }

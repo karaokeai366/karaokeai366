@@ -79,11 +79,12 @@ const handoverHost = client('smoke-handover-host', handoverSessionId);
 const handoverSinger = client('smoke-handover-singer', handoverSessionId);
 const handoverTarget = client('smoke-handover-target', handoverSessionId);
 const handoverTv = client('smoke-handover-tv', handoverSessionId);
+const handoverGuest = client('smoke-handover-guest', handoverSessionId);
 // Host + singer + 48 additional participants = exactly 50 active participants.
 const participants = Array.from({ length: 48 }, (_, index) => client(`smoke-party-${index + 1}`));
 
 try {
-  await openClients([host, singer, tv, overflow, soloHost, soloSinger, soloTv, handoverHost, handoverSinger, handoverTarget, handoverTv, ...participants]);
+  await openClients([host, singer, tv, overflow, soloHost, soloSinger, soloTv, handoverHost, handoverSinger, handoverTarget, handoverTv, handoverGuest, ...participants]);
 
   host.send('session.create', { name: 'Smoke Host', maxParticipants: 50 });
   await host.waitFor(m => m.type === 'session.created');
@@ -151,12 +152,14 @@ try {
   soloTv.send('session.join', { name: 'Solo TV', role: 'tv' });
   await soloTv.waitFor(m => m.type === 'session.joined');
 
-  handoverHost.send('session.create', { name: 'Handover Host', maxParticipants: 3 });
+  handoverHost.send('session.create', { name: 'Handover Host', maxParticipants: 4 });
   await handoverHost.waitFor(m => m.type === 'session.created');
   handoverSinger.send('session.join', { name: 'Handover Singer', role: 'participant' });
   await handoverSinger.waitFor(m => m.type === 'session.joined');
   handoverTarget.send('session.join', { name: 'Handover Target', role: 'participant' });
   await handoverTarget.waitFor(m => m.type === 'session.joined');
+  handoverGuest.send('session.join', { name: 'Handover Guest', role: 'participant' });
+  await handoverGuest.waitFor(m => m.type === 'session.joined');
   handoverTv.send('session.join', { name: 'Handover TV', role: 'tv' });
   await handoverTv.waitFor(m => m.type === 'session.joined');
 
@@ -185,6 +188,55 @@ try {
   handoverTarget.send('queue.next');
   const started = await handoverSinger.waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.started' && m.payload?.payload?.queueEntryId === disconnectQueueEntryId);
   const disconnectPerformanceId = started.payload.payload.performanceId;
+
+  // Uma apresentação pode ter convidados de áudio além do cantor principal.
+  // O convidado não recebe scoring, mas participa do mesmo estado de performance
+  // e pode trocar sinalização WebRTC com outro contribuidor.
+  handoverTarget.send('performance.participant.add', {
+    queueEntryId: disconnectQueueEntryId,
+    participantId: 'smoke-handover-guest'
+  });
+  const guestAdded = await handoverSinger.waitFor(m =>
+    m.type === 'session.event' &&
+    m.payload?.type === 'performance.participant.added' &&
+    m.payload?.payload?.participant?.participantId === 'smoke-handover-guest'
+  );
+  if (guestAdded.payload.payload.participant.scoringEnabled !== false) {
+    throw new Error('Convidado de áudio não pode receber scoring.');
+  }
+
+  handoverGuest.send('performance.audio.state', {
+    queueEntryId: disconnectQueueEntryId,
+    audioEnabled: false
+  });
+  await handoverSinger.waitFor(m =>
+    m.type === 'session.event' &&
+    m.payload?.type === 'performance.audio.state' &&
+    m.payload?.payload?.queueEntryId === disconnectQueueEntryId
+  );
+
+  handoverGuest.send('session.command', {
+    command: 'performance.audio.offer',
+    data: {
+      targetParticipantId: 'smoke-handover-target',
+      queueEntryId: disconnectQueueEntryId,
+      performanceId: disconnectPerformanceId
+    }
+  });
+  await handoverTarget.waitFor(m =>
+    m.type === 'session.command' &&
+    m.payload?.command === 'performance.audio.offer'
+  );
+
+  handoverTarget.send('performance.participant.remove', {
+    queueEntryId: disconnectQueueEntryId,
+    participantId: 'smoke-handover-guest'
+  });
+  await handoverSinger.waitFor(m =>
+    m.type === 'session.event' &&
+    m.payload?.type === 'performance.participant.removed' &&
+    m.payload?.payload?.participantId === 'smoke-handover-guest'
+  );
 
   // Neste ponto o Target é o Host após a transferência voluntária acima.
   handoverTarget.ws.close();
@@ -226,10 +278,10 @@ try {
   reconnect.send('session.reconnect');
   await reconnect.waitFor(m => m.type === 'session.reconnected');
 
-  console.log('SIGNALING_PARTY_SMOKE_OK participants=50 queueLimit=3 capacity=1..50 role-controls=true reconnect=true');
+  console.log('SIGNALING_PARTY_SMOKE_OK participants=50 queueLimit=3 capacity=1..50 role-controls=true reconnect=true multi-audio=true');
   try { reconnect.ws.close(); } catch {}
 } finally {
-  for (const c of [host, singer, tv, overflow, soloHost, soloSinger, soloTv, handoverHost, handoverSinger, handoverTarget, handoverTv, ...participants]) {
+  for (const c of [host, singer, tv, overflow, soloHost, soloSinger, soloTv, handoverHost, handoverSinger, handoverTarget, handoverTv, handoverGuest, ...participants]) {
     try { c.ws.close(); } catch {}
   }
 }
