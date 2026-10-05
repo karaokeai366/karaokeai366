@@ -113,7 +113,9 @@ wss.on('connection', ws => {
         }
         sockets.delete(ws);
       }
-      const state = initialState(m.payload?.state, m.sessionId, m.senderId);
+      const requestedCapacity = m.payload?.maxParticipants ?? m.payload?.state?.maxParticipants;
+      const initialPayloadState = requestedCapacity === undefined ? m.payload?.state : { ...(m.payload?.state ?? {}), maxParticipants: requestedCapacity };
+      const state = initialState(initialPayloadState, m.sessionId, m.senderId);
       let host = state.participants.find((p: any) => p.id === m.senderId);
       if (host) { host.role = 'host'; host.online = true; } else state.participants.unshift({ id: m.senderId, name: String(m.payload?.name ?? 'Host').slice(0, 30), role: 'host', joinedAt: Date.now(), capabilities: m.payload?.capabilities ?? {}, online: true });
       state.restartCreditsByParticipant[m.senderId] ??= restartCredits(state.roundMode);
