@@ -2155,6 +2155,7 @@ export function App() {
   const [searchPerformed, setSearchPerformed] = useState(false);
   const [roundCount, setRoundCount] = useState('1');
   const [roundOpen, setRoundOpen] = useState(false);
+  const [capacityDraft, setCapacityDraft] = useState('50');
   const [changingKeyId, setChangingKeyId] = useState<string | null>(null);
   const [webrtcSignals, setWebRtcSignals] = useState<Array<{ id?: string; payload?: { command?: string; data?: WebRtcSignal } }>>([]);
 
@@ -2647,6 +2648,24 @@ export function App() {
     });
   }
 
+  function setParticipantCapacity(value: string) {
+    if (!session || !transport || session.hostParticipantId !== currentParticipantId) return;
+    const capacity = Math.floor(Number(value));
+    const active = countConnectedParticipants(session.participants);
+    if (!Number.isFinite(capacity) || capacity < 1 || capacity > 50) {
+      setError('A capacidade deve ficar entre 1 e 50 celulares.');
+      return;
+    }
+    if (capacity < active) {
+      setError('A capacidade não pode ser menor que os celulares ativos.');
+      return;
+    }
+    setError('');
+    setSession({ ...session, maxParticipants: capacity });
+    setCapacityDraft(String(capacity));
+    transport.sendRaw('session.settings.set', session.sessionId, currentParticipantId, { maxParticipants: capacity });
+  }
+
   function setQueueStatus(queueEntryId: string, status: 'playing' | 'completed') {
     if (!session || !transport || session.hostParticipantId !== currentParticipantId) return;
     transport.sendRaw('queue.status.set', session.sessionId, currentParticipantId, {
@@ -3035,6 +3054,20 @@ export function App() {
                 A fila automática prioriza quem fez menos músicas na rodada e evita repetir o último cantor quando houver outro elegível.
                 Pausar preserva a posição. Pular cancela a tentativa sem gerar nota. Encerrar fecha a apresentação atual.
               </p>
+            </div>
+          )}
+          {session && (
+            <div className="panel auto-advance-panel">
+              <div>
+                <span className="eyebrow">👥 CAPACIDADE DA FESTA</span>
+                <h3>Celulares participantes</h3>
+                <p className="muted small-note">O Host conta como 1 celular. A TV fica fora dessa capacidade. Limite permitido: 1 a 50.</p>
+              </div>
+              <div className="round-count">
+                <input type="number" min="1" max="50" value={capacityDraft} onChange={(e) => setCapacityDraft(e.target.value)} />
+                <span>celulares</span>
+                <button type="button" className="primary" onClick={() => setParticipantCapacity(capacityDraft)}>Salvar</button>
+              </div>
             </div>
           )}
           {session && (
