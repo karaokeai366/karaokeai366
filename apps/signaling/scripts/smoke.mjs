@@ -194,6 +194,7 @@ try {
   // e pode trocar sinalização WebRTC com outro contribuidor.
   handoverTarget.send('performance.participant.add', {
     queueEntryId: disconnectQueueEntryId,
+    performanceId: disconnectPerformanceId,
     participantId: 'smoke-handover-guest'
   });
   const guestAdded = await handoverSinger.waitFor(m =>
@@ -207,6 +208,7 @@ try {
 
   handoverGuest.send('performance.audio.state', {
     queueEntryId: disconnectQueueEntryId,
+    performanceId: disconnectPerformanceId,
     audioEnabled: false
   });
   await handoverSinger.waitFor(m =>
@@ -279,6 +281,7 @@ try {
 
   handoverTarget.send('performance.participant.remove', {
     queueEntryId: disconnectQueueEntryId,
+    performanceId: disconnectPerformanceId,
     participantId: 'smoke-handover-guest'
   });
   await handoverSinger.waitFor(m =>
