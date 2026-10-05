@@ -287,6 +287,7 @@ wss.on('connection', ws => {
       case 'performance.participant.add': {
         const q = s.state.queue.find((x:any) => x.id === String(m.payload?.queueEntryId ?? ''));
         if (!q || q.status !== 'playing') return fail(ws, 'Não há apresentação ativa para adicionar participante.');
+        if (String(m.payload?.performanceId ?? '') !== String(q.activePerformanceId ?? '')) return fail(ws, 'A apresentação atual não corresponde ao performanceId informado.');
         const actorIsHost = c.participantId === s.hostId;
         const actorIsPrimary = q.ownerParticipantId === c.participantId;
         if (!actorIsHost && !actorIsPrimary) return fail(ws, 'Somente o Host ou o cantor principal pode adicionar participante.');
@@ -321,6 +322,7 @@ wss.on('connection', ws => {
       case 'performance.participant.remove': {
         const q = s.state.queue.find((x:any) => x.id === String(m.payload?.queueEntryId ?? ''));
         if (!q || q.status !== 'playing') return fail(ws, 'Não há apresentação ativa para remover participante.');
+        if (String(m.payload?.performanceId ?? '') !== String(q.activePerformanceId ?? '')) return fail(ws, 'A apresentação atual não corresponde ao performanceId informado.');
         const actorIsHost = c.participantId === s.hostId;
         const actorIsPrimary = q.ownerParticipantId === c.participantId;
         if (!actorIsHost && !actorIsPrimary) return fail(ws, 'Somente o Host ou o cantor principal pode remover participante.');
@@ -343,6 +345,7 @@ wss.on('connection', ws => {
       case 'performance.audio.state': {
         const q = s.state.queue.find((x:any) => x.id === String(m.payload?.queueEntryId ?? ''));
         if (!q || q.status !== 'playing') return fail(ws, 'Não há apresentação ativa.');
+        if (String(m.payload?.performanceId ?? '') !== String(q.activePerformanceId ?? '')) return fail(ws, 'A apresentação atual não corresponde ao performanceId informado.');
         const current = Array.isArray(q.performanceParticipants) ? q.performanceParticipants : [];
         const contributor = current.find((x:any) => x.participantId === c.participantId);
         if (!contributor && c.participantId !== s.hostId) return fail(ws, 'Você não participa do áudio desta apresentação.');
