@@ -1933,6 +1933,14 @@ function TvStage({
                   </div>
                 )}
 
+                {playing.hostDisconnectPause && playing.playbackState === 'paused' && (
+                  <div className="host-recovery-panel">
+                    <span className="eyebrow">⏸ APRESENTAÇÃO PAUSADA</span>
+                    <strong>O anfitrião perdeu a conexão</strong>
+                    <p className="small-note">A música está preservada no ponto exato. Aguardando reconexão do Host ou recuperação segura do controle.</p>
+                  </div>
+                )}
+
                 {currentLine ? (
                   <div className="tv-lyrics">
                     <div className="tv-lyrics-current">{currentLine.text}</div>
@@ -2358,7 +2366,10 @@ export function App() {
       }
 
       if (message.type === 'host.disconnected') {
-        setError('O anfitrião se desconectou. A recuperação de Host será adicionada na próxima etapa.');
+        const payload = message.payload as { performancePaused?: boolean } | undefined;
+        setError(payload?.performancePaused
+          ? 'O Host perdeu a conexão. A apresentação foi pausada e aguarda a reconexão do anfitrião.'
+          : 'O Host perdeu a conexão. A sessão aguarda a recuperação do anfitrião.');
       }
     });
 
@@ -2416,7 +2427,10 @@ export function App() {
       }
 
       if (message.type === 'host.disconnected') {
-        setError('O anfitrião se desconectou. A sessão continua preservada para reconexão.');
+        const payload = message.payload as { performancePaused?: boolean } | undefined;
+        setError(payload?.performancePaused
+          ? 'O Host perdeu a conexão. A música foi pausada no ponto exato e aguarda reconexão ou recuperação do Host.'
+          : 'O Host perdeu a conexão. A sessão continua preservada para reconexão.');
       }
     });
 
@@ -2699,7 +2713,8 @@ export function App() {
 
     transport.sendRaw('playback.control', session.sessionId, currentParticipantId, {
       action,
-      ...(current ? { queueEntryId: current.id } : {})
+      ...(current ? { queueEntryId: current.id } : {}),
+      ...(current?.activePerformanceId ? { performanceId: current.activePerformanceId } : {})
     });
   }
 
@@ -2850,9 +2865,15 @@ export function App() {
               <div className="panel host-recovery-panel">
                 <div>
                   <span className="eyebrow">⚠️ HOST OFFLINE</span>
-                  <h3>O anfitrião perdeu a conexão</h3>
+                  <h3>
+                    {session.queue.some((entry) => entry.status === 'playing' && entry.hostDisconnectPause)
+                      ? 'Apresentação pausada — Host perdeu a conexão'
+                      : 'O anfitrião perdeu a conexão'}
+                  </h3>
                   <p className="muted small-note">
-                    A sessão foi preservada. Você pode assumir o controle do palco enquanto o Host estiver offline.
+                    {session.queue.some((entry) => entry.status === 'playing' && entry.hostDisconnectPause)
+                      ? 'A música permanece pausada no ponto exato. O Host original tem uma janela para reconectar; depois disso, outro participante poderá assumir o controle.'
+                      : 'A sessão foi preservada. O Host original pode reconectar; se não retornar, a recuperação poderá ser assumida por outro participante.'}
                   </p>
                 </div>
                 <button
