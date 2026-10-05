@@ -74,6 +74,41 @@ def probe_duration(media_file: Path) -> float | None:
     return float(value) if value else None
 
 
+def youtube_cookie_file() -> Path | None:
+    configured = os.getenv("KARAOKE_YOUTUBE_COOKIES_FILE", "").strip()
+    if not configured:
+        return None
+
+    cookie_file = Path(configured).expanduser().resolve()
+    if not cookie_file.is_file():
+        raise PipelineError(
+            f"Arquivo de cookies do YouTube não encontrado: {cookie_file}"
+        )
+    if not os.access(cookie_file, os.R_OK):
+        raise PipelineError(
+            f"Arquivo de cookies do YouTube sem permissão de leitura: {cookie_file}"
+        )
+    return cookie_file
+
+
+def yt_dlp_base_args() -> list[str]:
+    args = [
+        "yt-dlp",
+        "--ignore-config",
+        "--no-playlist",
+        "--no-warnings",
+        "--restrict-filenames",
+        "--newline",
+        "--retries", "3",
+        "--fragment-retries", "3",
+        "--socket-timeout", "30",
+    ]
+    cookie_file = youtube_cookie_file()
+    if cookie_file:
+        args.extend(["--cookies", str(cookie_file)])
+    return args
+
+
 def run_download_command(
     args: list[str],
     progress: Callable[[float, str], None] | None = None,
@@ -126,15 +161,7 @@ def download_source(
 
     run_download_command(
         [
-            "yt-dlp",
-            "--ignore-config",
-            "--no-playlist",
-            "--no-warnings",
-            "--restrict-filenames",
-            "--newline",
-            "--retries", "3",
-            "--fragment-retries", "3",
-            "--socket-timeout", "30",
+            *yt_dlp_base_args(),
             *format_args,
             "-o", str(output),
             source_url,
