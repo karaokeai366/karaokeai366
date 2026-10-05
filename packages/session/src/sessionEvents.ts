@@ -3,6 +3,7 @@ export type SessionEventType =
   | 'participant.left'
   | 'participant.updated'
   | 'host.changed'
+  | 'host.transfer.pending'
   | 'queue.added'
   | 'queue.updated'
   | 'queue.removed'

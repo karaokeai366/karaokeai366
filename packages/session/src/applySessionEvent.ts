@@ -49,6 +49,12 @@ export function applySessionEvent<T extends Record<string, any>>(
         ...(payload?.state ?? {})
       };
 
+    case 'host.transfer.pending':
+      return {
+        ...state,
+        pendingHostParticipantId: payload?.targetParticipantId
+      };
+
     case 'queue.added': {
       if (!payload?.entry?.id) return state;
       const nextQueue = [...queue];
@@ -107,17 +113,17 @@ export function applySessionEvent<T extends Record<string, any>>(
       if (!payload?.queueEntryId) return state;
       const nextQueue = queue.map((item: any) =>
         item.id === payload.queueEntryId
-          ? { ...item, playbackState: 'paused', ...(payload.playbackPositionSeconds !== undefined ? { playbackPositionSeconds: payload.playbackPositionSeconds } : {}) }
+          ? { ...item, playbackState: 'paused', ...(payload.playbackPositionSeconds !== undefined ? { playbackPositionSeconds: payload.playbackPositionSeconds } : {}), ...(payload.reason === 'host_disconnected' ? { hostDisconnectPause: true } : {}) }
           : item
       );
-      return { ...state, queue: nextQueue };
+      return { ...state, queue: nextQueue, ...(payload.reason === 'host_disconnected' ? { status: 'paused' } : {}) };
     }
 
     case 'performance.resumed': {
       if (!payload?.queueEntryId) return state;
       const nextQueue = queue.map((item: any) =>
         item.id === payload.queueEntryId
-          ? { ...item, playbackState: 'playing', ...(payload.playbackStartedAt ? { playbackStartedAt: payload.playbackStartedAt } : {}) }
+          ? { ...item, playbackState: 'playing', hostDisconnectPause: undefined, ...(payload.playbackStartedAt ? { playbackStartedAt: payload.playbackStartedAt } : {}) }
           : item
       );
       return { ...state, queue: nextQueue };

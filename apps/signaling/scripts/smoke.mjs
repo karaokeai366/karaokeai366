@@ -4,6 +4,7 @@ const port = Number(process.env.PORT ?? 8787);
 const url = `ws://127.0.0.1:${port}`;
 const sessionId = `smoke-${Date.now()}`;
 const soloSessionId = `smoke-solo-${Date.now()}`;
+const handoverSessionId = `smoke-handover-${Date.now()}`;
 const TIMEOUT = 15000;
 
 function client(senderId, clientSessionId = sessionId) {
@@ -74,11 +75,15 @@ const overflow = client('smoke-overflow');
 const soloHost = client('smoke-solo-host', soloSessionId);
 const soloSinger = client('smoke-solo-singer', soloSessionId);
 const soloTv = client('smoke-solo-tv', soloSessionId);
+const handoverHost = client('smoke-handover-host', handoverSessionId);
+const handoverSinger = client('smoke-handover-singer', handoverSessionId);
+const handoverTarget = client('smoke-handover-target', handoverSessionId);
+const handoverTv = client('smoke-handover-tv', handoverSessionId);
 // Host + singer + 48 additional participants = exactly 50 active participants.
 const participants = Array.from({ length: 48 }, (_, index) => client(`smoke-party-${index + 1}`));
 
 try {
-  await openClients([host, singer, tv, overflow, soloHost, soloSinger, soloTv, ...participants]);
+  await openClients([host, singer, tv, overflow, soloHost, soloSinger, soloTv, handoverHost, handoverSinger, handoverTarget, handoverTv, ...participants]);
 
   host.send('session.create', { name: 'Smoke Host', maxParticipants: 50 });
   await host.waitFor(m => m.type === 'session.created');
@@ -146,6 +151,73 @@ try {
   soloTv.send('session.join', { name: 'Solo TV', role: 'tv' });
   await soloTv.waitFor(m => m.type === 'session.joined');
 
+  handoverHost.send('session.create', { name: 'Handover Host', maxParticipants: 3 });
+  await handoverHost.waitFor(m => m.type === 'session.created');
+  handoverSinger.send('session.join', { name: 'Handover Singer', role: 'participant' });
+  await handoverSinger.waitFor(m => m.type === 'session.joined');
+  handoverTarget.send('session.join', { name: 'Handover Target', role: 'participant' });
+  await handoverTarget.waitFor(m => m.type === 'session.joined');
+  handoverTv.send('session.join', { name: 'Handover TV', role: 'tv' });
+  await handoverTv.waitFor(m => m.type === 'session.joined');
+
+  handoverSinger.send('queue.add', { title: 'Handover Song', artist: 'KaraokeAI', sourceId: 'handover-source', durationSeconds: 120 });
+  const handoverAdded = await handoverSinger.waitFor(m => m.type === 'session.event' && m.payload?.type === 'queue.added');
+  const handoverQueueEntryId = handoverAdded.payload.payload.entry.id;
+  handoverSinger.send('queue.status.set', { queueEntryId: handoverQueueEntryId, status: 'ready', durationSeconds: 120 });
+  await handoverSinger.waitFor(m => m.type === 'session.event' && m.payload?.type === 'queue.updated');
+  handoverHost.send('queue.next');
+  await handoverSinger.waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.started');
+
+  // Transferência voluntária durante a música fica pendente; a apresentação
+  // não é interrompida e o novo Host só entra após o término.
+  handoverHost.send('host.transfer', { targetParticipantId: 'smoke-handover-target' });
+  await handoverHost.waitFor(m => m.type === 'session.event' && m.payload?.type === 'host.transfer.pending');
+  handoverTv.send('playback.finished', { queueEntryId: handoverQueueEntryId });
+  await handoverTarget.waitFor(m => m.type === 'session.event' && m.payload?.type === 'host.changed' && m.payload?.payload?.appliedAfterPerformance === true);
+
+  // Queda do Host no meio da música pausa imediatamente a apresentação.
+  // O mesmo performanceId/posição são preservados para permitir recuperação segura.
+  handoverSinger.send('queue.add', { title: 'Handover Disconnect Song', artist: 'KaraokeAI', sourceId: 'handover-disconnect-source', durationSeconds: 120 });
+  const disconnectAdded = await handoverSinger.waitFor(m => m.type === 'session.event' && m.payload?.type === 'queue.added' && m.payload?.payload?.entry?.title === 'Handover Disconnect Song');
+  const disconnectQueueEntryId = disconnectAdded.payload.payload.entry.id;
+  handoverSinger.send('queue.status.set', { queueEntryId: disconnectQueueEntryId, status: 'ready', durationSeconds: 120 });
+  await handoverSinger.waitFor(m => m.type === 'session.event' && m.payload?.type === 'queue.updated' && m.payload?.payload?.queueEntryId === disconnectQueueEntryId);
+  handoverTarget.send('queue.next');
+  const started = await handoverSinger.waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.started' && m.payload?.payload?.queueEntryId === disconnectQueueEntryId);
+  const disconnectPerformanceId = started.payload.payload.performanceId;
+
+  // Neste ponto o Target é o Host após a transferência voluntária acima.
+  handoverTarget.ws.close();
+  const paused = await handoverSinger.waitFor(m =>
+    m.type === 'session.event' &&
+    m.payload?.type === 'performance.paused' &&
+    m.payload?.payload?.queueEntryId === disconnectQueueEntryId &&
+    m.payload?.payload?.reason === 'host_disconnected'
+  );
+  if (paused.payload.payload.performanceId !== disconnectPerformanceId) throw new Error('PerformanceId mudou ao pausar por queda do Host.');
+  if (!(Number(paused.payload.payload.playbackPositionSeconds) >= 0)) throw new Error('Posição inválida ao pausar por queda do Host.');
+
+  handoverSinger.send('host.claim');
+  await handoverSinger.waitFor(m => m.type === 'session.error' && String(m.payload?.message ?? '').includes('temporariamente desconectado'));
+
+  // O Host original retorna e a música continua pausada até ele mandar resume.
+  const reconnectHost = client('smoke-handover-target', handoverSessionId);
+  await reconnectHost.waitOpen;
+  reconnectHost.send('session.reconnect');
+  await reconnectHost.waitFor(m => m.type === 'session.reconnected');
+  reconnectHost.send('playback.control', {
+    action: 'resume',
+    queueEntryId: disconnectQueueEntryId,
+    performanceId: disconnectPerformanceId
+  });
+  const resumed = await handoverSinger.waitFor(m =>
+    m.type === 'session.event' &&
+    m.payload?.type === 'performance.resumed' &&
+    m.payload?.payload?.queueEntryId === disconnectQueueEntryId
+  );
+  if (resumed.payload.payload.playbackStartedAt <= 0) throw new Error('Resume sem playbackStartedAt válido.');
+  reconnectHost.ws.close();
+
   const lastParticipant = participants[47];
   lastParticipant.ws.close();
   await new Promise(resolve => setTimeout(resolve, 100));
@@ -157,7 +229,7 @@ try {
   console.log('SIGNALING_PARTY_SMOKE_OK participants=50 queueLimit=3 capacity=1..50 role-controls=true reconnect=true');
   try { reconnect.ws.close(); } catch {}
 } finally {
-  for (const c of [host, singer, tv, overflow, soloHost, soloSinger, soloTv, ...participants]) {
+  for (const c of [host, singer, tv, overflow, soloHost, soloSinger, soloTv, handoverHost, handoverSinger, handoverTarget, handoverTv, ...participants]) {
     try { c.ws.close(); } catch {}
   }
 }
