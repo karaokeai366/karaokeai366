@@ -91,11 +91,11 @@ def youtube_cookie_file() -> Path | None:
     return cookie_file
 
 
-def yt_dlp_base_args() -> list[str]:
+def yt_dlp_base_args(*, no_playlist: bool = False) -> list[str]:
     args = [
         "yt-dlp",
         "--ignore-config",
-        "--no-playlist",
+        *(["--no-playlist"] if no_playlist else []),
         "--no-warnings",
         "--restrict-filenames",
         "--newline",
@@ -161,7 +161,7 @@ def download_source(
 
     run_download_command(
         [
-            *yt_dlp_base_args(),
+            *yt_dlp_base_args(no_playlist=True),
             *format_args,
             "-o", str(output),
             source_url,
