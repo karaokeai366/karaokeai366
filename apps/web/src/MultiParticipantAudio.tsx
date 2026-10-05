@@ -114,11 +114,24 @@ export function PerformanceGuestMicrophone({
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
   const handledRef = useRef(new Set<string>());
   const performanceIdRef = useRef<string | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const intentionalStopRef = useRef(false);
   const [active, setActive] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
   const [muted, setMuted] = useState(false);
   const [error, setError] = useState('');
 
+  const clearReconnect = () => {
+    if (reconnectTimerRef.current != null) window.clearTimeout(reconnectTimerRef.current);
+    reconnectTimerRef.current = null;
+  };
+
   const stop = (notify = true) => {
+    intentionalStopRef.current = true;
+    clearReconnect();
+    reconnectAttemptsRef.current = 0;
+    setReconnecting(false);
     peerRef.current?.close();
     peerRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -174,26 +187,11 @@ export function PerformanceGuestMicrophone({
     else pendingIceRef.current.push(candidate);
   }, [signals, participantId, tv?.id]);
 
-  async function start() {
-    if (!transport || !playing || !isGuest || !tv) {
-      setError('A TV precisa estar conectada para ativar este microfone.');
-      return;
-    }
-    if (!window.isSecureContext || !isWebRtcSupported()) {
-      setError('O microfone requer HTTPS/localhost e suporte a WebRTC.');
-      return;
-    }
-    try {
-      stop(false);
-      setError('');
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
-        video: false
-      });
-      streamRef.current = stream;
-      const peer = new RTCPeerConnection(getWebRtcConfiguration());
-      peerRef.current = peer;
-      stream.getTracks().forEach((track) => peer.addTrack(track, stream));
+  async function negotiate(stream: MediaStream) {
+    if (!transport || !playing || !isGuest || !tv) return;
+    const peer = new RTCPeerConnection(getWebRtcConfiguration());
+    peerRef.current = peer;
+    stream.getTracks().forEach((track) => peer.addTrack(track, stream));
       peer.onicecandidate = (event) => {
         if (!event.candidate || !transport) return;
         sendAudioSignal(transport, session, participantId, 'ice-candidate', {
@@ -202,10 +200,19 @@ export function PerformanceGuestMicrophone({
         });
       };
       peer.onconnectionstatechange = () => {
-        if (peer.connectionState === 'connected') setActive(true);
-        if (['failed', 'disconnected', 'closed'].includes(peer.connectionState)) {
+        if (peer.connectionState === 'connected') {
+          reconnectAttemptsRef.current = 0;
+          setReconnecting(false);
+          setActive(true);
+        }
+        if (['failed', 'disconnected'].includes(peer.connectionState)) {
           setActive(false);
           if (peerRef.current === peer) peerRef.current = null;
+          if (!intentionalStopRef.current && streamRef.current === stream) scheduleReconnect();
+        }
+        if (peer.connectionState === 'closed' && !intentionalStopRef.current && streamRef.current === stream) {
+          setActive(false);
+          scheduleReconnect();
         }
       };
       const offer = await peer.createOffer();
@@ -220,9 +227,57 @@ export function PerformanceGuestMicrophone({
         audioEnabled: true
       });
       setMuted(false);
-      setActive(true);
+      setActive(false);
+      setReconnecting(true);
     } catch (cause) {
-      stop(false);
+      if (!intentionalStopRef.current) scheduleReconnect();
+      setError(cause instanceof Error ? cause.message : 'Não foi possível conectar o microfone adicional.');
+    }
+  }
+
+  function scheduleReconnect() {
+    if (intentionalStopRef.current || !streamRef.current || !transport || !playing || !isGuest || !tv) return;
+    if (reconnectTimerRef.current != null) return;
+    const attempt = reconnectAttemptsRef.current;
+    if (attempt >= 6) {
+      setReconnecting(false);
+      setError('A conexão com a TV caiu. Toque em ativar novamente para tentar.');
+      return;
+    }
+    const delay = Math.min(10000, 1000 * (2 ** attempt));
+    reconnectAttemptsRef.current += 1;
+    setReconnecting(true);
+    reconnectTimerRef.current = window.setTimeout(() => {
+      reconnectTimerRef.current = null;
+      if (!streamRef.current) return;
+      peerRef.current?.close();
+      peerRef.current = null;
+      void negotiate(streamRef.current);
+    }, delay);
+  }
+
+  async function start() {
+    if (!transport || !playing || !isGuest || !tv) {
+      setError('A TV precisa estar conectada para ativar este microfone.');
+      return;
+    }
+    if (!window.isSecureContext || !isWebRtcSupported()) {
+      setError('O microfone requer HTTPS/localhost e suporte a WebRTC.');
+      return;
+    }
+    try {
+      intentionalStopRef.current = false;
+      clearReconnect();
+      reconnectAttemptsRef.current = 0;
+      setError('');
+      peerRef.current?.close();
+      const stream = streamRef.current ?? await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
+        video: false
+      });
+      streamRef.current = stream;
+      await negotiate(stream);
+    } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Não foi possível ativar o microfone adicional.');
     }
   }
@@ -249,7 +304,7 @@ export function PerformanceGuestMicrophone({
         <p className="muted small-note">Sua voz entra na apresentação, mas a nota oficial continua sendo do cantor principal.</p>
       </div>
       <div className="microphone-actions">
-        {!active ? <button className="primary" type="button" onClick={() => void start()}>🎙️ Ativar meu microfone</button> : (
+        {!active ? <button className="primary" type="button" onClick={() => void start()}>{reconnecting ? '🔄 Reconectando…' : '🎙️ Ativar meu microfone'}</button> : (
           <>
             <button className="secondary" type="button" onClick={toggleMute}>{muted ? '🔊 Desmutar' : '🔇 Silenciar'}</button>
             <button className="secondary" type="button" onClick={() => stop(true)}>⏹ Sair do áudio</button>
