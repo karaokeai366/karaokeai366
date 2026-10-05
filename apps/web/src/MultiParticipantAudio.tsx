@@ -113,6 +113,7 @@ export function PerformanceGuestMicrophone({
   const streamRef = useRef<MediaStream | null>(null);
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
   const handledRef = useRef(new Set<string>());
+  const performanceIdRef = useRef<string | null>(null);
   const [active, setActive] = useState(false);
   const [muted, setMuted] = useState(false);
   const [error, setError] = useState('');
@@ -135,8 +136,14 @@ export function PerformanceGuestMicrophone({
   useEffect(() => () => stop(false), []);
 
   useEffect(() => {
+    const nextPerformanceId = playing?.activePerformanceId ?? null;
+    if (performanceIdRef.current !== nextPerformanceId) {
+      performanceIdRef.current = nextPerformanceId;
+      if (peerRef.current || streamRef.current) stop(false);
+      handledRef.current.clear();
+    }
     if (!isGuest || !playing) stop(false);
-  }, [isGuest, playing?.id]);
+  }, [isGuest, playing?.id, playing?.activePerformanceId]);
 
   useEffect(() => {
     if (!active || !peerRef.current) return;
@@ -195,7 +202,10 @@ export function PerformanceGuestMicrophone({
       };
       peer.onconnectionstatechange = () => {
         if (peer.connectionState === 'connected') setActive(true);
-        if (['failed', 'disconnected', 'closed'].includes(peer.connectionState)) setActive(false);
+        if (['failed', 'disconnected', 'closed'].includes(peer.connectionState)) {
+          setActive(false);
+          if (peerRef.current === peer) peerRef.current = null;
+        }
       };
       const offer = await peer.createOffer();
       await peer.setLocalDescription(offer);
