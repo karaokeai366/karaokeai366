@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import type { QueueEntry, SessionState } from './domain';
+import { PerformanceGuestControls, PerformanceGuestMicrophone, TvMultiMicrophoneReceiver } from './MultiParticipantAudio';
 import {
   buildJoinUrl,
   buildTvJoinUrl,
@@ -1903,7 +1904,9 @@ function TvStage({
   }, [voiceVolume]);
 
   return (
-    <main className="tv-stage">
+    <>
+      <TvMultiMicrophoneReceiver session={session} participantId={participantId} transport={transport} signals={signals} />
+      <main className="tv-stage">
       <audio ref={audioRef} preload="auto" crossOrigin="anonymous" />
       <audio ref={remoteAudioRef} autoPlay playsInline />
       <header className="tv-topbar">
@@ -2228,7 +2231,7 @@ export function App() {
       if (!message.id) return;
       if (message.type !== 'session.command') return;
       const payload = message.payload as { command?: string; data?: WebRtcSignal } | undefined;
-      if (!payload?.command?.startsWith('webrtc.')) return;
+      if (!payload?.command?.startsWith('webrtc.') && !payload?.command?.startsWith('performance.audio.')) return;
       setWebRtcSignals((current) => [...current.slice(-49), { id: message.id, payload }]);
     });
   }, [transport]);
@@ -2898,6 +2901,7 @@ export function App() {
             signals={webrtcSignals}
             onChangeKey={changeSongKey}
           />
+          <PerformanceGuestMicrophone session={session} participantId={currentParticipantId} transport={transport} signals={webrtcSignals} />
           <div className="panel">
             <div className="panel-heading">
               <div><span className="eyebrow">SUA FILA</span><h3>Escolha uma música</h3></div>
@@ -3149,6 +3153,7 @@ export function App() {
             <p className="muted small-note">A rodada atual é {session?.roundMode.kind === 'open' ? 'aberta, até o anfitrião encerrar' : `de ${session?.roundMode.songCount} música(s)`}. O cálculo de recomeços usa essa configuração.</p>
           </div>
 
+          <PerformanceGuestControls session={session!} participantId={currentParticipantId} transport={transport} />
           <div className="panel">
             <div className="panel-heading">
               <div><span className="eyebrow">FILA COMPARTILHADA</span><h3>Adicione a primeira música</h3></div>
