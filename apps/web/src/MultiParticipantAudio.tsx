@@ -284,9 +284,13 @@ export function TvMultiMicrophoneReceiver({
   const audioContextRef = useRef<AudioContext | null>(audioContext ?? null);
   const audioSourcesRef = useRef(new Map<string, MediaStreamAudioSourceNode>());
   const audioGainsRef = useRef(new Map<string, GainNode>());
+  const audioDelaysRef = useRef(new Map<string, DelayNode>());
+  const statsTimersRef = useRef(new Map<string, number>());
   const [, redraw] = useState(0);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [guestVolumes, setGuestVolumes] = useState<Record<string, number>>({});
+  const [guestDelays, setGuestDelays] = useState<Record<string, number>>({});
+  const [guestRtt, setGuestRtt] = useState<Record<string, number | null>>({});
   const guestIds = useMemo(() => new Set(
     (playing?.performanceParticipants ?? [])
       .filter((item) => item.role === 'guest' && item.active)
@@ -305,6 +309,11 @@ export function TvMultiMicrophoneReceiver({
     audioSourcesRef.current.delete(id);
     audioGainsRef.current.get(id)?.disconnect();
     audioGainsRef.current.delete(id);
+    audioDelaysRef.current.get(id)?.disconnect();
+    audioDelaysRef.current.delete(id);
+    const statsTimer = statsTimersRef.current.get(id);
+    if (statsTimer) window.clearInterval(statsTimer);
+    statsTimersRef.current.delete(id);
     redraw((value) => value + 1);
   }
 
@@ -361,9 +370,12 @@ export function TvMultiMicrophoneReceiver({
             const previousGain = audioGainsRef.current.get(senderId);
             previousGain?.disconnect();
             const source = context.createMediaStreamSource(stream);
+            const delay = context.createDelay(0.5);
+            delay.delayTime.value = (guestDelays[senderId] ?? 0) / 1000;
             const gain = context.createGain();
             gain.gain.value = (guestVolumes[senderId] ?? 100) / 100;
-            source.connect(gain).connect(voiceDestination);
+            source.connect(delay).connect(gain).connect(voiceDestination);
+            audioDelaysRef.current.set(senderId, delay);
             audioSourcesRef.current.set(senderId, source);
             audioGainsRef.current.set(senderId, gain);
             if (context.state === 'suspended') void context.resume();
@@ -380,6 +392,19 @@ export function TvMultiMicrophoneReceiver({
           });
         };
         peer.onconnectionstatechange = () => {
+          if (peer.connectionState === 'connected' && !statsTimersRef.current.has(senderId)) {
+            const timer = window.setInterval(() => {
+              void peer.getStats().then((stats) => {
+                for (const report of stats.values()) {
+                  if (report.type === 'candidate-pair' && report.state === 'succeeded' && typeof report.currentRoundTripTime === 'number') {
+                    setGuestRtt((current) => ({ ...current, [senderId]: Math.round(report.currentRoundTripTime * 1000) }));
+                    break;
+                  }
+                }
+              }).catch(() => undefined);
+            }, 2000);
+            statsTimersRef.current.set(senderId, timer);
+          }
           if (['failed', 'closed'].includes(peer.connectionState)) closePeer(senderId);
         };
         await peer.setRemoteDescription(signal.sdp!);
@@ -406,9 +431,12 @@ export function TvMultiMicrophoneReceiver({
       const previousGain = audioGainsRef.current.get(id);
       previousGain?.disconnect();
       const source = audioContext.createMediaStreamSource(stream);
+      const delay = audioContext.createDelay(0.5);
+      delay.delayTime.value = (guestDelays[id] ?? 0) / 1000;
       const gain = audioContext.createGain();
       gain.gain.value = (guestVolumes[id] ?? 100) / 100;
-      source.connect(gain).connect(voiceDestination);
+      source.connect(delay).connect(gain).connect(voiceDestination);
+      audioDelaysRef.current.set(id, delay);
       audioSourcesRef.current.set(id, source);
       audioGainsRef.current.set(id, gain);
     }
@@ -446,6 +474,13 @@ export function TvMultiMicrophoneReceiver({
     });
   }, [guestIds]);
 
+  function setGuestDelay(participantId: string, delayMs: number) {
+    const normalized = Math.min(250, Math.max(0, Math.round(delayMs / 5) * 5));
+    setGuestDelays((current) => ({ ...current, [participantId]: normalized }));
+    const delay = audioDelaysRef.current.get(participantId);
+    if (delay) delay.delayTime.value = normalized / 1000;
+  }
+
   function setGuestVolume(participantId: string, volume: number) {
     const normalized = Math.min(150, Math.max(0, Math.round(volume)));
     setGuestVolumes((current) => ({ ...current, [participantId]: normalized }));
@@ -480,7 +515,7 @@ export function TvMultiMicrophoneReceiver({
             <label className="tv-guest-volume" key={id}>
               <span>
                 <strong>{person?.name ?? 'Convidado'}</strong>
-                <small>{connectedNow ? 'conectado' : 'aguardando microfone'} · {volume}%</small>
+                <small>{connectedNow ? 'conectado' : 'aguardando microfone'} · volume {volume}% · atraso {guestDelays[id] ?? 0} ms{guestRtt[id] != null ? ' · RTT ' + guestRtt[id] + ' ms' : ''}</small>
               </span>
               <input
                 type="range"
@@ -490,6 +525,15 @@ export function TvMultiMicrophoneReceiver({
                 value={volume}
                 aria-label="Volume do convidado"
                 onChange={(event) => setGuestVolume(id, Number(event.target.value))}
+              />
+              <input
+                type="range"
+                min="0"
+                max="250"
+                step="5"
+                value={guestDelays[id] ?? 0}
+                aria-label="Atraso do convidado"
+                onChange={(event) => setGuestDelay(id, Number(event.target.value))}
               />
               <button className="secondary" type="button" onClick={() => setGuestVolume(id, volume === 0 ? 100 : 0)}>
                 {volume === 0 ? '🔊' : '🔇'}
