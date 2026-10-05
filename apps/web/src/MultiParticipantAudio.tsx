@@ -98,16 +98,12 @@ export function PerformanceGuestMicrophone({
   session,
   participantId,
   transport,
-  signals,
-  audioContext,
-  voiceDestination
+  signals
 }: {
   session: SessionState;
   participantId: string;
   transport: WebSocketTransport | null;
   signals: SignalMessage[];
-  audioContext?: AudioContext | null;
-  voiceDestination?: AudioNode | null;
 }) {
   const playing = activePerformance(session);
   const member = playing?.performanceParticipants?.find((item) => item.participantId === participantId);
@@ -286,12 +282,16 @@ export function TvMultiMicrophoneReceiver({
   session,
   participantId,
   transport,
-  signals
+  signals,
+  audioContext,
+  voiceDestination
 }: {
   session: SessionState;
   participantId: string;
   transport: WebSocketTransport | null;
   signals: SignalMessage[];
+  audioContext?: AudioContext | null;
+  voiceDestination?: AudioNode | null;
 }) {
   const playing = activePerformance(session);
   const peersRef = useRef(new Map<string, RTCPeerConnection>());
