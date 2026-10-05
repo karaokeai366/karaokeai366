@@ -8,7 +8,7 @@ type Session = { id: string; hostId: string; state: any; clients: Map<string, Cl
 type EventType = 'participant.joined' | 'participant.left' | 'participant.updated' | 'host.changed' | 'queue.added' | 'queue.updated' | 'queue.removed' | 'queue.next' | 'singer.called' | 'performance.started' | 'performance.paused' | 'performance.resumed' | 'performance.finished' | 'performance.scored' | 'round.updated' | 'session.settings.changed';
 
 const port = Number(process.env.PORT ?? 8787);
-const defaultCapacity = clamp(Number(process.env.DEFAULT_SESSION_CAPACITY ?? 50), 2, 100);
+const defaultCapacity = clamp(Number(process.env.DEFAULT_SESSION_CAPACITY ?? 50), 1, 50);
 const maxSongs = clamp(Number(process.env.MAX_SONGS_PER_PARTICIPANT ?? 3), 1, 20);
 const sessions = new Map<string, Session>();
 const sockets = new Map<WebSocket, Client>();
@@ -28,7 +28,7 @@ function changed(s: Session, type: EventType, payload: unknown, actor?: string, 
 function initialState(state: any, sid: string, hostId: string) {
   const s = state && typeof state === 'object' ? { ...state } : {};
   s.sessionId = sid; s.hostParticipantId = hostId; s.createdAt ??= Date.now();
-  s.maxParticipants = clamp(Number(s.maxParticipants ?? defaultCapacity), 2, 100);
+  s.maxParticipants = clamp(Number(s.maxParticipants ?? defaultCapacity), 1, 50);
   s.participants = Array.isArray(s.participants) ? s.participants : [];
   s.queue = Array.isArray(s.queue) ? s.queue : [];
   s.queueSize = s.queue.length; s.roundId ??= randomUUID(); s.roundMode ??= { kind: 'songs', songCount: 1 };
@@ -113,7 +113,9 @@ wss.on('connection', ws => {
         }
         sockets.delete(ws);
       }
-      const state = initialState(m.payload?.state, m.sessionId, m.senderId);
+      const requestedCapacity = m.payload?.maxParticipants ?? m.payload?.state?.maxParticipants;
+      const initialPayloadState = requestedCapacity === undefined ? m.payload?.state : { ...(m.payload?.state ?? {}), maxParticipants: requestedCapacity };
+      const state = initialState(initialPayloadState, m.sessionId, m.senderId);
       let host = state.participants.find((p: any) => p.id === m.senderId);
       if (host) { host.role = 'host'; host.online = true; } else state.participants.unshift({ id: m.senderId, name: String(m.payload?.name ?? 'Host').slice(0, 30), role: 'host', joinedAt: Date.now(), capabilities: m.payload?.capabilities ?? {}, online: true });
       state.restartCreditsByParticipant[m.senderId] ??= restartCredits(state.roundMode);
@@ -180,6 +182,7 @@ wss.on('connection', ws => {
         const q = s.state.queue.find((x: any) => x.id === String(m.payload?.queueEntryId ?? '')); if (!q) return fail(ws, 'Música não encontrada.');
         const status = String(m.payload?.status ?? ''); if (!['queued','preparing','ready','playing','completed','cancelled'].includes(status)) return fail(ws, 'Status inválido.');
         if (c.participantId !== s.hostId && q.ownerParticipantId !== c.participantId) return fail(ws, 'Sem permissão para alterar esta música.');
+        if (c.participantId !== s.hostId && !['queued', 'preparing', 'ready'].includes(status)) return fail(ws, 'Somente o Host pode iniciar, concluir ou cancelar uma apresentação.');
         if (status === 'playing') { if (s.state.queue.some((x: any) => x.status === 'playing' && x.id !== q.id)) return fail(ws, 'Já existe uma música em reprodução.'); startSong(s, q); }
         else applyQueueStatus(s, q, m.payload, c.participantId); break;
       }
@@ -205,9 +208,17 @@ wss.on('connection', ws => {
       case 'queue.restart': {
         const q = s.state.queue.find((x:any) => x.id === String(m.payload?.queueEntryId ?? ''));
         if (!q || q.ownerParticipantId !== c.participantId || q.status !== 'playing') return fail(ws, 'A música não pode ser reiniciada.');
-        const credits = Number(s.state.restartCreditsByParticipant[c.participantId] ?? 0); if (credits <= 0) return fail(ws, 'Você não tem mais recomeços nesta rodada.');
-        s.state.restartCreditsByParticipant[c.participantId] = credits - 1; const updated = { ...q, playbackStartedAt: Date.now(), playbackPositionSeconds: 0, playbackState: 'playing' };
-        s.state.queue = s.state.queue.map((x:any) => x.id === q.id ? updated : x); changed(s, 'queue.updated', { entry: updated, queueEntryId: q.id }, c.participantId); break;
+        const progress = Number(m.payload?.progressPercent);
+        const credits = Number(s.state.restartCreditsByParticipant[c.participantId] ?? 0);
+        if (!Number.isFinite(progress) || progress < 0 || progress > 50) return fail(ws, 'O reinício só é permitido até 50% da música.');
+        if (credits <= 0) return fail(ws, 'Você não tem mais recomeços nesta rodada.');
+        if (String(m.payload?.performanceId ?? '') !== String(q.activePerformanceId ?? '')) return fail(ws, 'A tentativa atual não corresponde à música em reprodução.');
+        const newPerformanceId = q.id + '-' + Date.now() + '-' + randomUUID().slice(0, 8);
+        s.state.restartCreditsByParticipant[c.participantId] = credits - 1;
+        const updated = { ...q, activePerformanceId: newPerformanceId, playbackStartedAt: Date.now(), playbackPositionSeconds: 0, playbackState: 'playing' };
+        s.state.queue = s.state.queue.map((x:any) => x.id === q.id ? updated : x);
+        changed(s, 'performance.started', { queueEntryId: q.id, performanceId: newPerformanceId, restartedFromPerformanceId: q.activePerformanceId, remainingCredits: credits - 1 }, c.participantId, [c.participantId, ...s.state.participants.filter((p:any) => p.role === 'tv').map((p:any) => p.id)]);
+        break;
       }
       case 'performance.complete': {
         const q = s.state.queue.find((x:any) => x.id === String(m.payload?.queueEntryId ?? ''));
@@ -218,7 +229,7 @@ wss.on('connection', ws => {
         changed(s, 'performance.scored', { queueEntryId:q.id, score:q.score }, c.participantId); break;
       }
       case 'session.settings.set': {
-        if (c.participantId !== s.hostId) return fail(ws, 'Somente o Host pode alterar configurações.'); const next = m.payload?.maxParticipants === undefined ? s.state.maxParticipants : clamp(Number(m.payload.maxParticipants),2,100);
+        if (c.participantId !== s.hostId) return fail(ws, 'Somente o Host pode alterar configurações.'); const next = m.payload?.maxParticipants === undefined ? s.state.maxParticipants : clamp(Number(m.payload.maxParticipants),1,50);
         if (next < active(s)) return fail(ws, 'A capacidade não pode ser menor que os participantes atuais.'); s.state.maxParticipants = next; if (typeof m.payload?.autoAdvance === 'boolean') s.state.autoAdvance = m.payload.autoAdvance;
         changed(s, 'session.settings.changed', { state:{maxParticipants:next,autoAdvance:s.state.autoAdvance} }, c.participantId); break;
       }

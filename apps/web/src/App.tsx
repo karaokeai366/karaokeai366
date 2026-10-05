@@ -16,6 +16,7 @@ import { getWebRtcConfiguration, isWebRtcSupported, type WebRtcSignal } from './
 import { estimatePitch, pushPitchSample } from './pitchDetector';
 import { scorePerformance, suggestTranspositionSemitones, type MelodyReferenceNote, type PerformanceScore, type PitchSample } from '../../../packages/session/src/scoring';
 import { canRestart } from '../../../packages/session/src/restartPolicy';
+import { countConnectedParticipants } from '../../../packages/session/src/sessionCapacity';
 
 type View = 'home' | 'host' | 'join' | 'participant' | 'tv';
 
@@ -2154,6 +2155,7 @@ export function App() {
   const [searchPerformed, setSearchPerformed] = useState(false);
   const [roundCount, setRoundCount] = useState('1');
   const [roundOpen, setRoundOpen] = useState(false);
+  const [capacityDraft, setCapacityDraft] = useState('50');
   const [changingKeyId, setChangingKeyId] = useState<string | null>(null);
   const [webrtcSignals, setWebRtcSignals] = useState<Array<{ id?: string; payload?: { command?: string; data?: WebRtcSignal } }>>([]);
 
@@ -2646,6 +2648,24 @@ export function App() {
     });
   }
 
+  function setParticipantCapacity(value: string) {
+    if (!session || !transport || session.hostParticipantId !== currentParticipantId) return;
+    const capacity = Math.floor(Number(value));
+    const active = countConnectedParticipants(session.participants);
+    if (!Number.isFinite(capacity) || capacity < 1 || capacity > 50) {
+      setError('A capacidade deve ficar entre 1 e 50 celulares.');
+      return;
+    }
+    if (capacity < active) {
+      setError('A capacidade não pode ser menor que os celulares ativos.');
+      return;
+    }
+    setError('');
+    setSession({ ...session, maxParticipants: capacity });
+    setCapacityDraft(String(capacity));
+    transport.sendRaw('session.settings.set', session.sessionId, currentParticipantId, { maxParticipants: capacity });
+  }
+
   function setQueueStatus(queueEntryId: string, status: 'playing' | 'completed') {
     if (!session || !transport || session.hostParticipantId !== currentParticipantId) return;
     transport.sendRaw('queue.status.set', session.sessionId, currentParticipantId, {
@@ -2815,7 +2835,7 @@ export function App() {
             <p className="muted">Pesquise a música, confira a capa e a versão desejada e coloque-a na fila com um toque.</p>
             <div className="connection-line">
               <span className={`connection-badge ${connection}`}>{connection === 'online' ? '🟢 conectado' : connection === 'offline' ? '🔴 offline' : '🟡 conectando'}</span>
-              <span>{session.participants.length} participante(s)</span>
+              <span>{countConnectedParticipants(session.participants)} participante(s) online</span>
               <span>· rodada {session.roundMode.kind === 'open' ? 'aberta' : session.roundMode.songCount + ' música(s)'}</span>
               {connection !== 'online' && (
                 <button type="button" className="link-button inline-reconnect" onClick={() => void reconnectCurrentSession()}>
@@ -2954,7 +2974,7 @@ export function App() {
           </div>
 
           <div className="stats-grid">
-            <div className="stat-card"><span>Participantes</span><strong>{session?.participants.length ?? 0}</strong></div>
+            <div className="stat-card"><span>Celulares ativos</span><strong>{session ? countConnectedParticipants(session.participants) : 0}</strong></div>
             <div className="stat-card"><span>Na fila</span><strong>{session?.queueSize ?? 0}</strong></div>
             <div className="stat-card"><span>Rodada</span><strong>{session?.roundMode.kind === 'open' ? '∞' : session?.roundMode.songCount ?? 1}</strong></div>
           </div>
@@ -3034,6 +3054,20 @@ export function App() {
                 A fila automática prioriza quem fez menos músicas na rodada e evita repetir o último cantor quando houver outro elegível.
                 Pausar preserva a posição. Pular cancela a tentativa sem gerar nota. Encerrar fecha a apresentação atual.
               </p>
+            </div>
+          )}
+          {session && (
+            <div className="panel auto-advance-panel">
+              <div>
+                <span className="eyebrow">👥 CAPACIDADE DA FESTA</span>
+                <h3>Celulares participantes</h3>
+                <p className="muted small-note">O Host conta como 1 celular. A TV fica fora dessa capacidade. Limite permitido: 1 a 50.</p>
+              </div>
+              <div className="round-count">
+                <input type="number" min="1" max="50" value={capacityDraft} onChange={(e) => setCapacityDraft(e.target.value)} />
+                <span>celulares</span>
+                <button type="button" className="primary" onClick={() => setParticipantCapacity(capacityDraft)}>Salvar</button>
+              </div>
             </div>
           )}
           {session && (

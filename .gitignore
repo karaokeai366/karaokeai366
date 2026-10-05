@@ -15,3 +15,7 @@ Thumbs.db
 temp/
 cache/
 data/
+
+# Local credentials and exported browser data
+secrets/
+*.cookies.txt

@@ -10,7 +10,7 @@ The repository currently has one runnable frontend application: `apps/web`. It c
 
 The party signaling server, shared protocol and web client are aligned around the same session model. CI now checks compilation plus an end-to-end signaling smoke test covering host creation, participant/TV join, queue insertion, preparation, singer selection, performance start/finish and scoring.
 
-Real-device validation is still a separate stage: browser permissions, WebRTC behavior, TV playback, media assets, Wi-Fi conditions and 10/20/30/50-device load must be exercised on actual hardware before production use.
+Real-device validation is still a separate stage: browser permissions, WebRTC behavior, TV playback, media assets, Wi-Fi conditions and 1/10/20/30/50-device load must be exercised on actual hardware before production use.
 
 ## Server ↔ Web parity
 
@@ -21,7 +21,7 @@ Real-device validation is still a separate stage: browser permissions, WebRTC be
 | Ordered incremental `session.event` | ✅ | ✅ |
 | Sequence-gap recovery | ✅ | ✅ |
 | Participant join/leave/update | ✅ | ✅ |
-| Capacity 2–100, default 50 | ✅ | ✅ state + commands |
+| Capacity 1–50, default 50 | ✅ | ✅ state + commands |
 | TV excluded from participant capacity | ✅ | ✅ |
 | Host transfer | ✅ | ✅ command facade + state |
 | Host recovery/claim | ✅ | ✅ command facade + state |
@@ -46,7 +46,7 @@ Real-device validation is still a separate stage: browser permissions, WebRTC be
 ## Party-scale rules
 
 - Default active-participant capacity: **50**.
-- Configurable capacity: **2–100**.
+- Configurable capacity: **1–50**.
 - TV clients do not consume participant slots.
 - Offline participants keep their identity but do not consume an active slot.
 - Default queue limit: **3 active songs per participant**.
@@ -223,21 +223,25 @@ The CI workflow starts the built signaling server and runs the smoke test automa
 
 ## Recommended real-device test progression
 
-Do not jump directly to 50 phones. Validate the complete flow progressively:
+Do not jump directly to 50 phones. Validate the complete flow progressively, starting with the minimum valid party:
 
 ```text
-1 Host + 1 participant
+1 phone (Host)
         ↓
-5 participants
+2 phones
         ↓
-10 participants
+5 phones
         ↓
-20 participants
+10 phones
         ↓
-30 participants
+20 phones
         ↓
-50 participants
+30 phones
+        ↓
+50 phones
 ```
+
+The Host phone counts as one active participant. A TV does not consume a participant slot.
 
 At each level validate:
 

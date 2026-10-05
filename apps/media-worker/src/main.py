@@ -16,7 +16,13 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from .pipeline import PipelineError, SOURCE_SEPARATION_ENABLED, prepare_asset
+from .pipeline import (
+    PipelineError,
+    SOURCE_SEPARATION_ENABLED,
+    prepare_asset,
+    yt_dlp_base_args,
+    youtube_cookie_file,
+)
 from .key_transposer import transpose_asset_key
 from pydantic import BaseModel, Field
 
@@ -150,6 +156,13 @@ class LyricsResponse(BaseModel):
     synced_lyrics: str | None = None
 
 
+def _youtube_cookie_configured() -> bool:
+    try:
+        return youtube_cookie_file() is not None
+    except PipelineError:
+        return False
+
+
 def validate_source_url(url: str) -> str:
     url = url.strip()
     if not (url.startswith("https://") or url.startswith("http://")):
@@ -202,6 +215,7 @@ def health() -> dict[str, Any]:
         "yt_dlp_ejs": ejs_available,
         "deno": deno_available,
         "youtube_ready": deno_available and ejs_available,
+        "youtube_cookies_configured": _youtube_cookie_configured(),
         "ffmpeg": shutil.which("ffmpeg") is not None,
         "ffprobe": shutil.which("ffprobe") is not None,
         "audio_separator": shutil.which("audio-separator") is not None,
@@ -222,11 +236,10 @@ def search(
     try:
         raw = run_command(
             [
-                "yt-dlp",
+                *yt_dlp_base_args(),
                 "--flat-playlist",
                 "--dump-single-json",
                 "--skip-download",
-                "--no-warnings",
                 music_search,
             ]
         )
@@ -237,11 +250,10 @@ def search(
         query = f"ytsearch{limit}:{normalized_query}"
         raw = run_command(
             [
-                "yt-dlp",
+                *yt_dlp_base_args(),
                 "--flat-playlist",
                 "--dump-single-json",
                 "--skip-download",
-                "--no-warnings",
                 query,
             ]
         )

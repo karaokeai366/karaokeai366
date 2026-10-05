@@ -1,6 +1,6 @@
 export const DEFAULT_SESSION_CAPACITY = 50;
-export const MIN_SESSION_CAPACITY = 2;
-export const MAX_SESSION_CAPACITY = 100;
+export const MIN_SESSION_CAPACITY = 1;
+export const MAX_SESSION_CAPACITY = 50;
 
 export interface SessionParticipantForCapacity {
   role: 'host' | 'participant' | 'tv';
