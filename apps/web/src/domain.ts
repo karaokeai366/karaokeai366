@@ -66,6 +66,8 @@ export interface QueueEntry {
   playbackPositionSeconds?: number;
   playbackPausedAt?: number;
   playbackState?: 'playing' | 'paused';
+  hostDisconnectPause?: boolean;
+  hostPausedAt?: number;
   durationSeconds?: number;
   activePerformanceId?: string;
   attempts?: PerformanceAttempt[];
