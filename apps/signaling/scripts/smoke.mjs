@@ -175,16 +175,26 @@ try {
   handoverTv.send('playback.finished', { queueEntryId: handoverQueueEntryId });
   await handoverTarget.waitFor(m => m.type === 'session.event' && m.payload?.type === 'host.changed' && m.payload?.payload?.appliedAfterPerformance === true);
 
-  // Queda do Host no meio da música também não permite takeover imediato.
-  // O Host original continua podendo reconectar.
-  const disconnectHost = client('smoke-handover-disconnect-host', handoverSessionId);
-  await disconnectHost.waitOpen;
-  disconnectHost.send('session.reconnect');
-  await disconnectHost.waitFor(m => m.type === 'session.reconnected');
-  disconnectHost.ws.close();
+  // Queda do Host no meio de uma nova música também não permite takeover
+  // imediato; a apresentação continua e o Host original pode reconectar.
+  handoverSinger.send('queue.add', { title: 'Handover Disconnect Song', artist: 'KaraokeAI', sourceId: 'handover-disconnect-source', durationSeconds: 120 });
+  const disconnectAdded = await handoverSinger.waitFor(m => m.type === 'session.event' && m.payload?.type === 'queue.added' && m.payload?.payload?.entry?.title === 'Handover Disconnect Song');
+  const disconnectQueueEntryId = disconnectAdded.payload.payload.entry.id;
+  handoverSinger.send('queue.status.set', { queueEntryId: disconnectQueueEntryId, status: 'ready', durationSeconds: 120 });
+  await handoverSinger.waitFor(m => m.type === 'session.event' && m.payload?.type === 'queue.updated' && m.payload?.payload?.queueEntryId === disconnectQueueEntryId);
+  handoverTarget.send('queue.next');
+  await handoverSinger.waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.started' && m.payload?.payload?.queueEntryId === disconnectQueueEntryId);
+
+  handoverTarget.ws.close();
   await new Promise(resolve => setTimeout(resolve, 100));
-  handoverTarget.send('host.claim');
-  await handoverTarget.waitFor(m => m.type === 'session.error' && String(m.payload?.message ?? '').includes('Host'));
+  handoverSinger.send('host.claim');
+  await handoverSinger.waitFor(m => m.type === 'session.error' && String(m.payload?.message ?? '').includes('música atual continua'));
+
+  const reconnectHost = client('smoke-handover-reconnect-host', handoverSessionId);
+  await reconnectHost.waitOpen;
+  reconnectHost.send('session.reconnect');
+  await reconnectHost.waitFor(m => m.type === 'session.reconnected');
+  reconnectHost.ws.close();
 
   const lastParticipant = participants[47];
   lastParticipant.ws.close();
