@@ -1,4 +1,4 @@
-export const PARTY_SCALE_TARGETS = [10, 20, 30, 50] as const;
+export const PARTY_SCALE_TARGETS = [1, 10, 20, 30, 50] as const;
 
 export interface PartyScaleProfile {
   participants: number;
@@ -8,7 +8,7 @@ export interface PartyScaleProfile {
 }
 
 export function createPartyScaleProfile(participants: number, queueEntries = participants): PartyScaleProfile {
-  const normalized = Math.max(0, Math.floor(participants));
+  const normalized = Math.max(1, Math.floor(participants));
   return {
     participants: normalized,
     queueEntries: Math.max(0, Math.floor(queueEntries)),
@@ -18,5 +18,5 @@ export function createPartyScaleProfile(participants: number, queueEntries = par
 }
 
 export function isWithinMvpPartyScale(participants: number): boolean {
-  return participants >= 0 && participants <= 50;
+  return participants >= 1 && participants <= 50;
 }
