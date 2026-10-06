@@ -239,7 +239,7 @@ def safe_asset_id(value: str | None) -> str:
     return uuid4().hex
 
 
-def run_command(args: list[str]) -> str:
+def run_command(args: list[str], *, timeout_seconds: float | None = None) -> str:
     import subprocess
 
     try:
@@ -250,8 +250,14 @@ def run_command(args: list[str]) -> str:
             text=True,
             encoding="utf-8",
             errors="replace",
+            timeout=timeout_seconds,
         )
         return completed.stdout
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(
+            status_code=504,
+            detail=f"O serviço de busca demorou mais de {timeout_seconds:g}s para responder.",
+        ) from exc
     except FileNotFoundError as exc:
         raise HTTPException(
             status_code=503,
@@ -305,7 +311,8 @@ def search(
                 "--dump-single-json",
                 "--skip-download",
                 music_search,
-            ]
+            ],
+            timeout_seconds=12,
         )
         payload = json.loads(raw)
         entries = payload.get("entries", [])
@@ -319,7 +326,8 @@ def search(
                 "--dump-single-json",
                 "--skip-download",
                 query,
-            ]
+            ],
+            timeout_seconds=12,
         )
         payload = json.loads(raw)
         entries = payload.get("entries", [])
@@ -341,7 +349,7 @@ def search(
             or entry.get("creator")
         )
         album = entry.get("album")
-        if not artist:
+        if not artist and len(results) < 3:
             enriched_artist, enriched_album = enrich_music_metadata_from_lrclib(
                 title,
                 entry.get("duration"),
