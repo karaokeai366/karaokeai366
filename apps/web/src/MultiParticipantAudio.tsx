@@ -189,8 +189,9 @@ export function PerformanceGuestMicrophone({
 
   async function negotiate(stream: MediaStream) {
     if (!transport || !playing || !isGuest || !tv) return;
-    const peer = new RTCPeerConnection(getWebRtcConfiguration());
-    peerRef.current = peer;
+    try {
+      const peer = new RTCPeerConnection(getWebRtcConfiguration());
+      peerRef.current = peer;
     stream.getTracks().forEach((track) => peer.addTrack(track, stream));
       peer.onicecandidate = (event) => {
         if (!event.candidate || !transport) return;
