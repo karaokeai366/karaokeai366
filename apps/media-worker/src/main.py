@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import difflib
 import json
 import os
 import re
@@ -163,6 +164,65 @@ def _youtube_cookie_configured() -> bool:
         return False
 
 
+def enrich_music_metadata_from_lrclib(
+    title: str,
+    duration: float | None,
+) -> tuple[str | None, str | None]:
+    """Best-effort metadata enrichment; failure must never break search."""
+    normalized_title = title.strip()
+    if not normalized_title:
+        return None, None
+
+    try:
+        with httpx.Client(timeout=4, headers={
+            "User-Agent": "KaraokeAI/1.0 (https://github.com/karaokeai366/karaokeai366)"
+        }) as client:
+            response = client.get(
+                "https://lrclib.net/api/search",
+                params={"track_name": normalized_title},
+            )
+            if response.status_code != 200:
+                return None, None
+            candidates = response.json()
+    except (httpx.HTTPError, ValueError):
+        return None, None
+
+    if not isinstance(candidates, list):
+        return None, None
+
+    def score(candidate: Any) -> tuple[float, float]:
+        candidate_title = str(candidate.get("trackName") or "")
+        title_similarity = difflib.SequenceMatcher(
+            None,
+            normalized_title.casefold(),
+            candidate_title.casefold(),
+        ).ratio()
+        candidate_duration = candidate.get("duration")
+        duration_delta = 999999.0
+        try:
+            if duration is not None and candidate_duration is not None:
+                duration_delta = abs(float(candidate_duration) - float(duration))
+        except (TypeError, ValueError):
+            pass
+        return (title_similarity, -duration_delta)
+
+    candidates = [
+        candidate for candidate in candidates
+        if isinstance(candidate, dict) and str(candidate.get("artistName") or "").strip()
+    ]
+    if not candidates:
+        return None, None
+
+    best = max(candidates, key=score)
+    similarity, _ = score(best)
+    if similarity < 0.75:
+        return None, None
+
+    artist = str(best.get("artistName") or "").strip() or None
+    album = str(best.get("albumName") or "").strip() or None
+    return artist, album
+
+
 def validate_source_url(url: str) -> str:
     url = url.strip()
     if not (url.startswith("https://") or url.startswith("http://")):
@@ -270,19 +330,28 @@ def search(
             source_url = f"https://www.youtube.com/watch?v={source_id}"
         if not source_url or not source_id:
             continue
+        title = str(entry.get("title") or "Sem título")
+        artist = (
+            ", ".join(str(item) for item in entry.get("artists", []) if item)
+            or entry.get("artist")
+            or entry.get("creator")
+        )
+        album = entry.get("album")
+        if not artist:
+            enriched_artist, enriched_album = enrich_music_metadata_from_lrclib(
+                title,
+                entry.get("duration"),
+            )
+            artist = enriched_artist
+            album = album or enriched_album
+
         results.append(
             SearchResult(
                 source_id=str(source_id),
                 source="youtube-music" if using_music_catalog else "youtube",
-                title=str(entry.get("title") or "Sem título"),
-                artist=(
-                    ", ".join(str(item) for item in entry.get("artists", []) if item)
-                    or entry.get("artist")
-                    or entry.get("creator")
-                    or entry.get("uploader")
-                    or entry.get("channel")
-                ),
-                album=entry.get("album"),
+                title=title,
+                artist=artist,
+                album=album,
                 channel_name=entry.get("channel") or entry.get("uploader"),
                 duration_seconds=entry.get("duration"),
                 thumbnail_url=entry.get("thumbnail") or (
