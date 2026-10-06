@@ -330,7 +330,7 @@ try {
   audioLoadGuests[0].send('performance.audio.state', { queueEntryId: audioQueueEntryId, performanceId: audioPerformanceId, audioEnabled: false });
   await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.audio.state' && m.payload?.payload?.participantId === audioLoadGuests[0].senderId);
   audioLoadGuests[0].send('performance.audio.state', { queueEntryId: audioQueueEntryId, performanceId: audioPerformanceId, audioEnabled: true });
-  await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.audio.state' && m.payload?.payload?.participantId === audioLoadGuests[1].senderId && m.payload?.payload?.audioEnabled === true);
+  await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.audio.state' && m.payload?.payload?.participantId === audioLoadGuests[0].senderId && m.payload?.payload?.audioEnabled === true);
   audioLoadHost.send('performance.participant.add', { queueEntryId: audioQueueEntryId, performanceId: audioPerformanceId, participantId: 'smoke-audio-overflow' });
   await audioLoadHost.waitFor(m => m.type === 'session.error' && String(m.payload?.message ?? '').includes('microfones'));
   for (let index = 0; index < audioLoadGuests.length; index += 1) {
