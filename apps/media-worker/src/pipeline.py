@@ -375,13 +375,30 @@ def separate_sources(
     output_dir = folder / "separated"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    separator = Separator(
-        output_dir=str(output_dir),
-        model_file_dir=str(MODEL_DIR),
-        output_format="WAV",
-        ensemble_preset="karaoke",
-        use_soundfile=True,
-    )
+    separator_mode = os.getenv("KARAOKE_SEPARATOR_MODE", "fast").strip().lower()
+    separator_model = os.getenv(
+        "KARAOKE_SEPARATOR_MODEL",
+        "UVR_MDXNET_KARA_2.onnx",
+    ).strip()
+
+    if separator_mode == "quality":
+        separator = Separator(
+            output_dir=str(output_dir),
+            model_file_dir=str(MODEL_DIR),
+            output_format="WAV",
+            ensemble_preset="karaoke",
+            use_soundfile=True,
+        )
+    else:
+        # Fast party mode: one karaoke-specific MDX-Net model instead of the
+        # three-model karaoke ensemble. The quality mode remains available
+        # through KARAOKE_SEPARATOR_MODE=quality.
+        separator = Separator(
+            output_dir=str(output_dir),
+            model_file_dir=str(MODEL_DIR),
+            output_format="WAV",
+            use_soundfile=True,
+        )
 
     # audio-separator 0.47.0 exposes inference progress through tqdm loops
     # inside its architecture modules. Forward those iterations to the job
@@ -413,9 +430,28 @@ def separate_sources(
         vr_separator.tqdm = _ProgressTqdm
         demucs_separator.tqdm = _ProgressTqdm
 
-    progress and progress("separation", 55, "Carregando modelo de separação…")
-    separator.load_model()
-    progress and progress("separation", 55, "Separando voz e instrumental…")
+    progress and progress(
+        "separation",
+        55,
+        (
+            "Carregando separador rápido…"
+            if separator_mode != "quality"
+            else "Carregando separador de alta qualidade…"
+        ),
+    )
+    if separator_mode == "quality":
+        separator.load_model()
+    else:
+        separator.load_model(model_filename=separator_model)
+    progress and progress(
+        "separation",
+        55,
+        (
+            "Separando voz e instrumental…"
+            if separator_mode != "quality"
+            else "Separando voz e instrumental com qualidade máxima…"
+        ),
+    )
     output_files = separator.separate(str(normalized_audio))
 
     if not output_files:
