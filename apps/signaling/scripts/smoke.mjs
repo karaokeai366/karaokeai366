@@ -345,7 +345,9 @@ try {
     TIMEOUT,
     'audio-load: primary audio enabled'
   );
-  audioLoadHost.send('performance.participant.add', { queueEntryId: audioQueueEntryId, performanceId: audioPerformanceId, participantId: 'smoke-audio-overflow' });
+  // O Host está online e fora dos 16 contribuidores; usá-lo como alvo
+  // permite validar o limite sem falhar antes na validação do participante.
+  audioLoadHost.send('performance.participant.add', { queueEntryId: audioQueueEntryId, performanceId: audioPerformanceId, participantId: audioLoadHost.senderId });
   await audioLoadHost.waitFor(m => m.type === 'session.error' && String(m.payload?.message ?? '').includes('microfones'));
   // O cantor principal (guest-1) permanece na apresentação e não pode ser removido.
   // A limpeza remove somente os 15 contribuidores adicionais (guest-2..guest-16).
