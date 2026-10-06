@@ -317,7 +317,7 @@ try {
   let currentContributors = 1;
   for (const target of loadTargets) {
     for (let contributor = currentContributors; contributor < target; contributor += 1) {
-      const guest = audioLoadGuests[contributor - 1];
+      const guest = audioLoadGuests[contributor];
       audioLoadHost.send('performance.participant.add', {
         queueEntryId: audioQueueEntryId,
         performanceId: audioPerformanceId,
