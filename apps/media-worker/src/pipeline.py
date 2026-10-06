@@ -462,6 +462,8 @@ def separate_sources(
 
     for output in output_files:
         path = Path(output)
+        if not path.is_absolute():
+            path = output_dir / path
         lower = path.name.lower()
         if "vocal" in lower:
             vocals = path
