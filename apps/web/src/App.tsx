@@ -25,6 +25,11 @@ import { countConnectedParticipants } from '../../../packages/session/src/sessio
 
 type View = 'home' | 'host' | 'join' | 'participant' | 'tv';
 
+function isTelevisionBrowser(): boolean {
+  const userAgent = window.navigator.userAgent.toLocaleLowerCase();
+  return /smart-tv|smarttv|tizen|webos|netcast|hbbtv|viera|bravia|googletv|google tv|aftb|aftm|aftt/.test(userAgent);
+}
+
 const SIGNALING_PORT = 8787;
 
 function getSignalingUrl(): string {
@@ -2159,11 +2164,12 @@ function RoundProgress({
 export function App() {
   const initialParams = new URLSearchParams(window.location.search);
   const initialJoin = initialParams.get('join') === '1';
+  const initialTv = initialParams.get('tv') === '1' || window.location.pathname === '/tv' || isTelevisionBrowser();
   const storedSession = getLocalSession();
   const storedIdentity = getLocalIdentity();
 
   const [view, setView] = useState<View>(
-    initialJoin ? 'join' : 'home'
+    initialJoin ? (initialParams.get('tv') === '1' ? 'join' : 'join') : initialTv ? 'tv' : 'home'
   );
   // A QR/link join must never reuse a session cached on this device.
   // Otherwise a previous Host session can force the Join screen back into Host mode.
@@ -2261,13 +2267,14 @@ export function App() {
 
   useEffect(() => {
     if (tvRouteRequested && window.location.search !== '?tv=1') {
-      window.location.replace('/?tv=1');
+      window.location.replace('/');
     }
   }, [tvRouteRequested]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const tvDiscoveryRequested = params.get('tv') === '1' && params.get('join') !== '1';
+    const tvDiscoveryRequested = (params.get('tv') === '1' || tvRouteRequested || isTelevisionBrowser())
+      && params.get('join') !== '1';
     if (!tvDiscoveryRequested) return;
 
     const deviceId = getDeviceId();
