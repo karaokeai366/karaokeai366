@@ -64,6 +64,36 @@ def update_prepare_job(job_id: str, stage: str, percent: int, message: str) -> N
     })
 
 
+def cached_manifest(asset_id: str) -> dict[str, Any] | None:
+    manifest_path = ROOT / asset_id / "manifest.json"
+    if not manifest_path.is_file():
+        return None
+
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+    preparation = manifest.get("preparation") or {}
+    files = manifest.get("files") or {}
+    required = (
+        preparation.get("download") == "ready"
+        and preparation.get("separation") == "ready"
+        and preparation.get("melody") == "ready"
+        and bool(files.get("instrumental"))
+        and bool(files.get("vocals"))
+    )
+    if not required:
+        return None
+
+    for key in ("instrumental", "vocals"):
+        path = ROOT / asset_id / str(files[key])
+        if not path.is_file():
+            return None
+
+    return manifest
+
+
 async def run_prepare_job(
     job_id: str,
     request: PrepareRequest,
@@ -82,6 +112,18 @@ async def run_prepare_job(
                 f"{request.media_kind}:{cache_key}".encode("utf-8")
             ).hexdigest()[:32]
         )
+
+        cached = cached_manifest(asset_id)
+        if cached is not None:
+            prepare_jobs[job_id].update({
+                "status": "ready",
+                "stage": "ready",
+                "progress": 100,
+                "message": "Música já preparada; reutilizando o SongAsset.",
+                "manifest": cached,
+                "updatedAt": asyncio.get_event_loop().time(),
+            })
+            return
 
         manifest = await asyncio.to_thread(
             prepare_asset,
@@ -463,6 +505,20 @@ async def prepare(request: PrepareRequest) -> dict[str, Any]:
         "sourceUrl": request.source_url.strip(),
     }
 
+    cache_key = request.source_id or request.source_url.strip()
+    for existing_job in prepare_jobs.values():
+        if (
+            existing_job.get("status") in {"queued", "running"}
+            and existing_job.get("cacheKey") == cache_key
+        ):
+            return {
+                "jobId": existing_job["jobId"],
+                "status": existing_job["status"],
+                "stage": existing_job.get("stage", "queued"),
+                "progress": existing_job.get("progress", 0),
+                "message": existing_job.get("message", "Preparação já em andamento."),
+            }
+
     job_id = uuid4().hex
     prepare_jobs[job_id] = {
         "jobId": job_id,
@@ -472,6 +528,7 @@ async def prepare(request: PrepareRequest) -> dict[str, Any]:
         "message": "Preparação aguardando início…",
         "createdAt": asyncio.get_event_loop().time(),
         "updatedAt": asyncio.get_event_loop().time(),
+        "cacheKey": cache_key,
     }
 
     asyncio.create_task(run_prepare_job(job_id, request, source))
