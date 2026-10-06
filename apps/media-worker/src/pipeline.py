@@ -355,7 +355,11 @@ def download_cover(url: str | None, folder: Path) -> str | None:
         return None
 
 
-def separate_sources(normalized_audio: Path, folder: Path) -> tuple[Path, Path]:
+def separate_sources(
+    normalized_audio: Path,
+    folder: Path,
+    progress: Callable[[str, int, str], None] | None = None,
+) -> tuple[Path, Path]:
     if not SOURCE_SEPARATION_ENABLED:
         raise PipelineError(
             "Separação vocal está desativada. Defina KARAOKE_ENABLE_SOURCE_SEPARATION=true."
@@ -378,7 +382,40 @@ def separate_sources(normalized_audio: Path, folder: Path) -> tuple[Path, Path]:
         ensemble_preset="karaoke",
         use_soundfile=True,
     )
+
+    # audio-separator 0.47.0 exposes inference progress through tqdm loops
+    # inside its architecture modules. Forward those iterations to the job
+    # progress callback while keeping the library's own output disabled.
+    if progress is not None:
+        from tqdm import tqdm as base_tqdm
+        from audio_separator.separator.architectures import (
+            demucs_separator,
+            mdx_separator,
+            mdxc_separator,
+            vr_separator,
+        )
+
+        class _ProgressTqdm(base_tqdm):
+            def update(self, n=1):
+                result = super().update(n)
+                total = self.total
+                if total:
+                    fraction = max(0.0, min(1.0, self.n / total))
+                    progress(
+                        "separation",
+                        55 + round(fraction * 25),
+                        f"Separando voz e instrumental… {fraction * 100:.0f}%",
+                    )
+                return result
+
+        mdx_separator.tqdm = _ProgressTqdm
+        mdxc_separator.tqdm = _ProgressTqdm
+        vr_separator.tqdm = _ProgressTqdm
+        demucs_separator.tqdm = _ProgressTqdm
+
+    progress and progress("separation", 55, "Carregando modelo de separação…")
     separator.load_model()
+    progress and progress("separation", 55, "Separando voz e instrumental…")
     output_files = separator.separate(str(normalized_audio))
 
     if not output_files:
@@ -788,7 +825,11 @@ def prepare_asset(
                 55,
                 "Separando voz e instrumental…",
             )
-            vocals, instrumental = separate_sources(normalized, folder)
+            vocals, instrumental = separate_sources(
+                normalized,
+                folder,
+                progress=progress,
+            )
     else:
         report_progress(progress, "separation", 55, "Separando voz e instrumental…")
         vocals, instrumental = separate_sources(normalized, folder)
