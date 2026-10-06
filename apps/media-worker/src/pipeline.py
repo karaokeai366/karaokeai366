@@ -214,66 +214,66 @@ def fetch_lyrics(
         "User-Agent": "KaraokeAI/1.0 (https://github.com/karaokeai366/karaokeai366)"
     }
 
-    with httpx.Client(timeout=15, headers=headers) as client:
-        if artist_name:
-            params: dict[str, str | float] = {
-                "track_name": track_name,
-                "artist_name": artist_name,
-            }
-            if duration is not None:
-                params["duration"] = duration
+    try:
+        with httpx.Client(timeout=15, headers=headers) as client:
+            if artist_name:
+                params: dict[str, str | float] = {
+                    "track_name": track_name,
+                    "artist_name": artist_name,
+                }
+                if duration is not None:
+                    params["duration"] = duration
 
-            response = client.get(LRCLIB_URL, params=params)
+                response = client.get(LRCLIB_URL, params=params)
 
-            if response.status_code == 404:
-                return None
-            if response.status_code == 429:
-                raise PipelineError(
-                    f"LRCLIB limitou temporariamente a consulta. Retry-After={response.headers.get('Retry-After', 'unknown')}."
-                )
-
-            response.raise_for_status()
-            return response.json()
-
-        # O YouTube Music pode não fornecer o artista em resultados
-        # flat. Nesse caso, /api/get retornaria 400 porque artist_name
-        # é obrigatório. Pesquisamos pelo título e escolhemos a faixa
-        # com duração mais próxima para manter a preparação resiliente.
-        response = client.get(
-            "https://lrclib.net/api/search",
-            params={"track_name": track_name},
-        )
-        if response.status_code == 429:
-            raise PipelineError(
-                f"LRCLIB limitou temporariamente a consulta. Retry-After={response.headers.get('Retry-After', 'unknown')}."
-            )
-        response.raise_for_status()
-
-        candidates = response.json()
-        if not isinstance(candidates, list) or not candidates:
-            return None
-
-        def score(candidate: Any) -> tuple[int, float, int]:
-            candidate_duration = candidate.get("duration")
-            try:
-                delta = abs(float(candidate_duration) - float(duration)) if duration is not None and candidate_duration is not None else 999999.0
-            except (TypeError, ValueError):
-                delta = 999999.0
-            has_synced = 0 if str(candidate.get("syncedLyrics") or "").strip() else 1
-            return (0 if delta <= 2 else 1, delta, has_synced)
-
-        best = min(candidates, key=score)
-        candidate_duration = best.get("duration")
-        if duration is not None and candidate_duration is not None:
-            try:
-                if abs(float(candidate_duration) - float(duration)) > 2:
+                # Letras são um recurso complementar: indisponibilidade
+                # temporária do LRCLIB não pode abortar a preparação.
+                if response.status_code in {404, 429} or response.status_code >= 500:
                     return None
-            except (TypeError, ValueError):
+
+                response.raise_for_status()
+                return response.json()
+
+            # O YouTube Music pode não fornecer o artista em resultados
+            # flat. Nesse caso, /api/get retornaria 400 porque artist_name
+            # é obrigatório. Pesquisamos pelo título e escolhemos a faixa
+            # com duração mais próxima para manter a preparação resiliente.
+            response = client.get(
+                "https://lrclib.net/api/search",
+                params={"track_name": track_name},
+            )
+            if response.status_code in {404, 429} or response.status_code >= 500:
+                return None
+            response.raise_for_status()
+
+            candidates = response.json()
+            if not isinstance(candidates, list) or not candidates:
                 return None
 
-        return best
+            def score(candidate: Any) -> tuple[int, float, int]:
+                candidate_duration = candidate.get("duration")
+                try:
+                    delta = abs(float(candidate_duration) - float(duration)) if duration is not None and candidate_duration is not None else 999999.0
+                except (TypeError, ValueError):
+                    delta = 999999.0
+                has_synced = 0 if str(candidate.get("syncedLyrics") or "").strip() else 1
+                return (0 if delta <= 2 else 1, delta, has_synced)
 
+            best = min(candidates, key=score)
+            candidate_duration = best.get("duration")
+            if duration is not None and candidate_duration is not None:
+                try:
+                    if abs(float(candidate_duration) - float(duration)) > 2:
+                        return None
+                except (TypeError, ValueError):
+                    return None
 
+            return best
+    except httpx.HTTPError:
+        # LRCLIB pode estar temporariamente indisponível, lento ou
+        # inacessível a partir do worker. A letra não é obrigatória
+        # para gerar o instrumental/vocais.
+        return None
 def parse_lrc(synced_lyrics: str) -> list[dict[str, Any]]:
     pattern = re.compile(r"\[(\d{1,3}):(\d{2}(?:\.\d+)?)\](.*)")
     lines: list[dict[str, Any]] = []
