@@ -2872,14 +2872,39 @@ export function App() {
   const joinUrl = view === 'host' && session ? buildJoinUrl(session) : '';
   const tvJoinUrl = view === 'host' && session ? buildTvJoinUrl(session) : '';
 
-  if (view === 'tv' && session) {
+  if (view === 'tv') {
+    if (session) {
+      return (
+        <TvStage
+          session={session}
+          participantId={currentParticipantId}
+          transport={transport}
+          signals={webrtcSignals}
+        />
+      );
+    }
+
     return (
-      <TvStage
-        session={session}
-        participantId={currentParticipantId}
-        transport={transport}
-        signals={webrtcSignals}
-      />
+      <main className="app-shell">
+        <section className="panel narrow" style={{ margin: '12vh auto', textAlign: 'center' }}>
+          <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📺</div>
+          <span className="eyebrow">TELA DA TV</span>
+          <h2>Procurando a sessão...</h2>
+          <p className="muted">
+            A TV está conectada ao KaraokeAI e procurando uma sessão ativa com o Host.
+          </p>
+          {connection === 'connecting' && <div className="connecting-text">Conectando ao serviço de sessão…</div>}
+          {connection === 'offline' && <div className="connecting-text">Aguardando o serviço de sessão…</div>}
+          {connection === 'error' && (
+            <div className="global-error">
+              {error || 'Não foi possível conectar ao serviço de sessão na porta 8787.'}
+            </div>
+          )}
+          {!error && connection !== 'online' && (
+            <p className="muted small-note">Se o Host ainda não criou a sessão, esta tela continuará procurando.</p>
+          )}
+        </section>
+      </main>
     );
   }
 
