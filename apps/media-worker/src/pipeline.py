@@ -724,6 +724,7 @@ def prepare_asset(
     source: dict[str, Any],
     media_kind: str,
     root: Path,
+    separation_lock: Any | None = None,
     progress: Callable[[str, int, str], None] | None = None,
 ) -> dict[str, Any]:
     folder = root / asset_id
@@ -773,8 +774,24 @@ def prepare_asset(
     melody_state = "error"
     melody_payload: dict[str, Any] | None = None
 
-    report_progress(progress, "separation", 55, "Separando voz e instrumental…")
-    vocals, instrumental = separate_sources(normalized, folder)
+    if separation_lock is not None:
+        report_progress(
+            progress,
+            "separation",
+            54,
+            "Aguardando disponibilidade do separador de voz…",
+        )
+        with separation_lock:
+            report_progress(
+                progress,
+                "separation",
+                55,
+                "Separando voz e instrumental…",
+            )
+            vocals, instrumental = separate_sources(normalized, folder)
+    else:
+        report_progress(progress, "separation", 55, "Separando voz e instrumental…")
+        vocals, instrumental = separate_sources(normalized, folder)
     separation_state = "ready"
 
     report_progress(progress, "melody", 82, "Analisando melodia, tom e BPM…")
