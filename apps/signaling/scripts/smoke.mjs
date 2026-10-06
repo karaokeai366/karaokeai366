@@ -335,9 +335,11 @@ try {
   await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.audio.state' && m.payload?.payload?.participantId === audioLoadGuests[0].senderId && m.payload?.payload?.audioEnabled === true);
   audioLoadHost.send('performance.participant.add', { queueEntryId: audioQueueEntryId, performanceId: audioPerformanceId, participantId: 'smoke-audio-overflow' });
   await audioLoadHost.waitFor(m => m.type === 'session.error' && String(m.payload?.message ?? '').includes('microfones'));
-  for (let index = 0; index < audioLoadGuests.length; index += 1) {
+  // O cantor principal (guest-1) permanece na apresentação e não pode ser removido.
+  // A limpeza remove somente os 15 contribuidores adicionais (guest-2..guest-16).
+  for (let index = 1; index < audioLoadGuests.length; index += 1) {
     audioLoadHost.send('performance.participant.remove', { queueEntryId: audioQueueEntryId, performanceId: audioPerformanceId, participantId: audioLoadGuests[index].senderId });
-    await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.participant.removed' && m.payload?.payload?.participantId === audioLoadGuests[index].senderId);
+    await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.participant.removed' && m.payload?.payload?.participantId === audioLoadGuests[index].senderId, TIMEOUT, `audio-load: guest-${index + 1} participant.removed`);
   }
   audioLoadHost.send('playback.control', { action: 'end', queueEntryId: audioQueueEntryId });
   await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.finished' && m.payload?.payload?.queueEntryId === audioQueueEntryId);
