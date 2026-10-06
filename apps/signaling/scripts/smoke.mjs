@@ -35,14 +35,15 @@ function client(senderId, clientSessionId = sessionId) {
     senderId,
     messages,
     waitOpen,
-    waitFor(predicate, timeout = TIMEOUT) {
+    waitFor(predicate, timeout = TIMEOUT, label = 'message') {
       const existing = messages.find(predicate);
       if (existing) return Promise.resolve(existing);
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
           const index = waiters.findIndex(item => item.resolve === resolve);
           if (index >= 0) waiters.splice(index, 1);
-          reject(new Error(`Timeout waiting for ${senderId}`));
+          const recent = messages.slice(-8).map(m => `${m.type}:${m.payload?.type ?? m.payload?.message ?? ''}`).join(', ');
+          reject(new Error(`Timeout waiting for ${senderId} [${label}] recent=[${recent}]`));
         }, timeout);
         waiters.push({
           predicate,
@@ -297,22 +298,22 @@ try {
   // Estresse determinístico do protocolo de áudio: 2, 5, 8 e 16 contribuidores.
   // Não abre microfones reais; valida limite, estado, mute, sinalização e remoção em escala.
   audioLoadHost.send('session.create', { name: 'Audio Load Host', maxParticipants: 17 });
-  await audioLoadHost.waitFor(m => m.type === 'session.created');
+  await audioLoadHost.waitFor(m => m.type === 'session.created', TIMEOUT, 'audio-load: session.created');
   audioLoadTv.send('session.join', { name: 'Audio Load TV', role: 'tv' });
-  await audioLoadTv.waitFor(m => m.type === 'session.joined');
+  await audioLoadTv.waitFor(m => m.type === 'session.joined', TIMEOUT, 'audio-load: tv session.joined');
   for (let index = 0; index < audioLoadGuests.length; index += 1) {
     const guest = audioLoadGuests[index];
     guest.send('session.join', { name: `Audio Guest ${index + 1}`, role: 'participant' });
-    await guest.waitFor(m => m.type === 'session.joined');
+    await guest.waitFor(m => m.type === 'session.joined', TIMEOUT, `audio-load: guest-${index + 1} session.joined`);
   }
-  // O guest-1 é o cantor principal; guests 2..15 são contribuidores de áudio.
+  // O guest-1 é o cantor principal; guests 2..16 são contribuidores de áudio.
   audioLoadGuests[0].send('queue.add', { title: 'Audio Load Song', artist: 'KaraokeAI', sourceId: 'audio-load-source' });
-  const audioAdded = await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'queue.added');
+  const audioAdded = await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'queue.added', TIMEOUT, 'audio-load: queue.added');
   const audioQueueEntryId = audioAdded.payload.payload.entry.id;
   audioLoadGuests[0].send('queue.status.set', { queueEntryId: audioQueueEntryId, status: 'ready' });
-  await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'queue.updated');
+  await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'queue.updated', TIMEOUT, 'audio-load: queue.updated');
   audioLoadHost.send('queue.next');
-  const audioStarted = await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.started');
+  const audioStarted = await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.started', TIMEOUT, 'audio-load: performance.started');
   const audioPerformanceId = audioStarted.payload.payload.performanceId;
   const loadTargets = [2, 5, 8, 16];
   let currentContributors = 1;
