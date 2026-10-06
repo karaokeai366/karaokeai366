@@ -3,7 +3,7 @@ import type { QueueEntry, SessionState } from './domain';
 import type { WebSocketTransport } from './wsTransport';
 import { getWebRtcConfiguration, isWebRtcSupported, type WebRtcSignal } from './webrtc';
 
-type SignalMessage = { id?: string; payload?: { command?: string; data?: AudioSignal } };
+type SignalMessage = { id?: string; payload?: { command?: string; data?: WebRtcSignal } };
 
 type AudioSignal = WebRtcSignal & { queueEntryId: string; performanceId: string };
 
