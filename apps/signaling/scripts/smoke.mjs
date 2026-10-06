@@ -83,7 +83,7 @@ const handoverTv = client('smoke-handover-tv', handoverSessionId);
 const handoverGuest = client('smoke-handover-guest', handoverSessionId);
 const audioLoadHost = client('smoke-audio-load-host', audioLoadSessionId);
 const audioLoadTv = client('smoke-audio-load-tv', audioLoadSessionId);
-const audioLoadGuests = Array.from({ length: 15 }, (_, index) => client(`smoke-audio-load-guest-${index + 1}`, audioLoadSessionId));
+const audioLoadGuests = Array.from({ length: 16 }, (_, index) => client(`smoke-audio-load-guest-${index + 1}`, audioLoadSessionId));
 // Host + singer + 48 additional participants = exactly 50 active participants.
 const participants = Array.from({ length: 48 }, (_, index) => client(`smoke-party-${index + 1}`));
 
@@ -296,7 +296,7 @@ try {
 
   // Estresse determinístico do protocolo de áudio: 2, 5, 8 e 16 contribuidores.
   // Não abre microfones reais; valida limite, estado, mute, sinalização e remoção em escala.
-  audioLoadHost.send('session.create', { name: 'Audio Load Host', maxParticipants: 16 });
+  audioLoadHost.send('session.create', { name: 'Audio Load Host', maxParticipants: 17 });
   await audioLoadHost.waitFor(m => m.type === 'session.created');
   audioLoadTv.send('session.join', { name: 'Audio Load TV', role: 'tv' });
   await audioLoadTv.waitFor(m => m.type === 'session.joined');
