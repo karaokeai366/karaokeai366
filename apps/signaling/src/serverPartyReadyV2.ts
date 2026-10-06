@@ -10,7 +10,7 @@ type EventType = 'participant.joined' | 'participant.left' | 'participant.update
 const port = Number(process.env.PORT ?? 8787);
 const defaultCapacity = clamp(Number(process.env.DEFAULT_SESSION_CAPACITY ?? 50), 1, 50);
 const maxSongs = clamp(Number(process.env.MAX_SONGS_PER_PARTICIPANT ?? 3), 1, 20);
-const maxPerformanceContributors = clamp(Number(process.env.MAX_PERFORMANCE_CONTRIBUTORS ?? 8), 2, 16);
+const maxPerformanceContributors = clamp(Number(process.env.MAX_PERFORMANCE_CONTRIBUTORS ?? 16), 2, 16);
 const sessions = new Map<string, Session>();
 const sockets = new Map<WebSocket, Client>();
 
