@@ -305,11 +305,7 @@ try {
     guest.send('session.join', { name: `Audio Guest ${index + 1}`, role: 'participant' });
     await guest.waitFor(m => m.type === 'session.joined');
   }
-  audioLoadHost.send('queue.add', { title: 'Audio Load Song', artist: 'KaraokeAI', sourceId: 'audio-load-source' });
-  const audioAdded = await audioLoadHost.waitFor(m => m.type === 'session.event' && m.payload?.type === 'queue.added');
-  const audioQueueEntryId = audioAdded.payload.payload.entry.id;
-  audioLoadHost.send('queue.status.set', { queueEntryId: audioQueueEntryId, status: 'ready' });
-  await audioLoadHost.waitFor(m => m.type === 'session.event' && m.payload?.type === 'queue.updated');
+  // O guest-1 é o cantor principal; guests 2..15 são contribuidores de áudio.\n  audioLoadGuests[0].send('queue.add', { title: 'Audio Load Song', artist: 'KaraokeAI', sourceId: 'audio-load-source' });\n  const audioAdded = await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'queue.added');\n  const audioQueueEntryId = audioAdded.payload.payload.entry.id;\n  audioLoadGuests[0].send('queue.status.set', { queueEntryId: audioQueueEntryId, status: 'ready' });\n  await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'queue.updated');
   audioLoadHost.send('queue.next');
   const audioStarted = await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.started');
   const audioPerformanceId = audioStarted.payload.payload.performanceId;
