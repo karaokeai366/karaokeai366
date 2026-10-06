@@ -2257,6 +2257,69 @@ export function App() {
     });
   }, [transport]);
 
+  const tvRouteRequested = window.location.pathname === '/tv';
+
+  useEffect(() => {
+    if (tvRouteRequested && window.location.search !== '?tv=1') {
+      window.location.replace('/?tv=1');
+    }
+  }, [tvRouteRequested]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tvDiscoveryRequested = params.get('tv') === '1' && params.get('join') !== '1';
+    if (!tvDiscoveryRequested) return;
+
+    const deviceId = getDeviceId();
+    const socket = new WebSocketTransport(getSignalingUrl());
+    let settled = false;
+
+    socket.subscribeConnection((state) => {
+      if (state !== 'open' || settled) return;
+      try {
+        socket.sendRaw('session.tv.discover', 'tv-discovery', deviceId, {});
+      } catch {
+        if (!settled) {
+          settled = true;
+          setError('Não foi possível procurar a sessão ativa.');
+        }
+      }
+    });
+
+    const unsubscribe = socket.subscribe((message) => {
+      if (message.type === 'session.tv.discovered') {
+        const payload = message.payload as { sessionId?: string; hostParticipantId?: string } | undefined;
+        if (!payload?.sessionId || !payload.hostParticipantId || settled) return;
+        settled = true;
+        const next = new URLSearchParams({
+          join: '1',
+          tv: '1',
+          session: payload.sessionId,
+          host: payload.hostParticipantId
+        });
+        window.location.replace('/?' + next.toString());
+        return;
+      }
+
+      if (message.type === 'session.tv.discovery.empty' && !settled) {
+        settled = true;
+        setError('Nenhuma sessão ativa foi encontrada. Crie a sessão no Host e tente novamente.');
+      }
+    });
+
+    socket.connect().catch(() => {
+      if (!settled) {
+        settled = true;
+        setError('Não foi possível conectar ao serviço de sessão.');
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      socket.disconnect();
+    };
+  }, [tvRouteRequested]);
+
   const joinParams = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
     return {
