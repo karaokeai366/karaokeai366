@@ -507,7 +507,14 @@ function SingerNextUp({
   const [microphoneWarmed, setMicrophoneWarmed] = useState(false);
 
   useEffect(() => {
-    if (!mine || !nextEntry || nextEntry.status !== 'queued' || !nextEntry.sourceUrl || !nextEntry.sourceId) {
+    if (
+      !mine
+      || !nextEntry
+      || nextEntry.status !== 'queued'
+      || nextEntry.preparationStage === 'error'
+      || !nextEntry.sourceUrl
+      || !nextEntry.sourceId
+    ) {
       return;
     }
 
