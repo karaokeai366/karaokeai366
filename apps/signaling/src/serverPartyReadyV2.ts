@@ -14,6 +14,16 @@ const maxPerformanceContributors = clamp(Number(process.env.MAX_PERFORMANCE_CONT
 const sessions = new Map<string, Session>();
 const sockets = new Map<WebSocket, Client>();
 
+function findTvSession(): Session | undefined {
+  const candidates = [...sessions.values()].filter((session) => {
+    if (session.state.status === 'finished') return false;
+    const host = person(session, session.hostId);
+    return Boolean(host && host.online !== false && session.clients.has(session.hostId));
+  });
+  candidates.sort((left, right) => Number(right.state.createdAt ?? 0) - Number(left.state.createdAt ?? 0));
+  return candidates[0];
+}
+
 function clamp(n: number, min: number, max: number) { return Number.isFinite(n) ? Math.max(min, Math.min(max, Math.floor(n))) : min; }
 function validId(v: unknown): v is string { return typeof v === 'string' && v.trim().length > 0 && v.length <= 128; }
 function send(ws: WebSocket, type: string, payload: unknown) { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ id: randomUUID(), type, timestamp: Date.now(), payload })); }
@@ -114,6 +124,16 @@ const wss = new WebSocketServer({ port });
 wss.on('connection', ws => {
   ws.on('message', raw => {
     let m: Message; try { m = JSON.parse(raw.toString()); } catch { fail(ws, 'Mensagem JSON inválida.'); return; }
+
+    if (m.type === 'session.tv.discover') {
+      const session = findTvSession();
+      if (!session) return send(ws, 'session.tv.discovery.empty', {});
+      return send(ws, 'session.tv.discovered', {
+        sessionId: session.id,
+        hostParticipantId: session.hostId
+      });
+    }
+
     if (!validId(m.sessionId) || !validId(m.senderId)) { fail(ws, 'sessionId e senderId são obrigatórios.'); return; }
 
     if (m.type === 'session.create') {
