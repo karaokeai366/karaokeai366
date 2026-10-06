@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shutil
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -44,6 +45,9 @@ app.mount("/media", StaticFiles(directory=str(ROOT)), name="media")
 
 type PrepareJob = dict[str, Any]
 prepare_jobs: dict[str, PrepareJob] = {}
+# Source separation is CPU/RAM intensive; serialize only this stage so
+# downloads, metadata and other lightweight preparation work can overlap.
+source_separation_lock = threading.Lock()
 
 
 def update_prepare_job(job_id: str, stage: str, percent: int, message: str) -> None:
@@ -72,6 +76,7 @@ async def run_prepare_job(
             source=source,
             media_kind=request.media_kind,
             root=ROOT,
+            separation_lock=source_separation_lock,
             progress=lambda stage, percent, message: update_prepare_job(
                 job_id, stage, percent, message
             ),
