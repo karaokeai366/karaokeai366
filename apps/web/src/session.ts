@@ -2,6 +2,15 @@ import type { DeviceCapabilities, Participant, SessionState } from './domain';
 
 const SESSION_KEY = 'karaokeai.session.v1';
 const DEVICE_KEY = 'karaokeai.device.v1';
+const IDENTITY_KEY = 'karaokeai.identity.v1';
+
+export type LocalIdentity = {
+  sessionId: string;
+  participantId: string;
+  name: string;
+  role: 'host' | 'participant' | 'tv';
+  hostParticipantId: string;
+};
 
 function randomId(prefix: string): string {
   const bytes = crypto.getRandomValues(new Uint8Array(6));
@@ -10,10 +19,50 @@ function randomId(prefix: string): string {
 
 export function getDeviceId(): string {
   const existing = localStorage.getItem(DEVICE_KEY);
-  if (existing) return existing;
+  // Older builds accidentally stored a participant id (p-...) here. Migrate
+  // those values so one physical device has its own stable identity.
+  if (existing?.startsWith('dev-')) return existing;
+
   const created = randomId('dev');
   localStorage.setItem(DEVICE_KEY, created);
   return created;
+}
+
+export function getLocalIdentity(): LocalIdentity | null {
+  const raw = localStorage.getItem(IDENTITY_KEY);
+  if (raw) {
+    try {
+      return JSON.parse(raw) as LocalIdentity;
+    } catch {
+      localStorage.removeItem(IDENTITY_KEY);
+    }
+  }
+
+  // Recover identities created by the previous build when the legacy device
+  // key was the participant id. This is intentionally only a fallback.
+  const session = getLocalSession();
+  const legacyId = localStorage.getItem(DEVICE_KEY);
+  if (!session || !legacyId) return null;
+  const participant = session.participants.find((item) => item.id === legacyId);
+  if (!participant) return null;
+
+  const identity: LocalIdentity = {
+    sessionId: session.sessionId,
+    participantId: participant.id,
+    name: participant.name,
+    role: participant.role,
+    hostParticipantId: session.hostParticipantId
+  };
+  localStorage.setItem(IDENTITY_KEY, JSON.stringify(identity));
+  return identity;
+}
+
+export function saveLocalIdentity(identity: LocalIdentity): void {
+  localStorage.setItem(IDENTITY_KEY, JSON.stringify(identity));
+}
+
+export function clearLocalIdentity(): void {
+  localStorage.removeItem(IDENTITY_KEY);
 }
 
 export function detectCapabilities(): DeviceCapabilities {
@@ -56,7 +105,13 @@ export function createSession(name: string): SessionState {
   };
 
   localStorage.setItem(SESSION_KEY, JSON.stringify(state));
-  localStorage.setItem(DEVICE_KEY, participantId);
+  saveLocalIdentity({
+    sessionId: state.sessionId,
+    participantId,
+    name,
+    role: 'host',
+    hostParticipantId: participantId
+  });
   return state;
 }
 
