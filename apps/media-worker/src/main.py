@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import difflib
+import hashlib
 import json
 import os
 import re
@@ -70,9 +71,21 @@ async def run_prepare_job(
 ) -> None:
     try:
         prepare_jobs[job_id].update({"status": "running"})
+
+        # Reuse the same asset for repeated requests of the same source.
+        # This turns a previously prepared song into an immediate cache hit.
+        cache_key = request.source_id or request.source_url.strip()
+        asset_id = (
+            safe_asset_id(request.asset_id)
+            if request.asset_id
+            else hashlib.sha256(
+                f"{request.media_kind}:{cache_key}".encode("utf-8")
+            ).hexdigest()[:32]
+        )
+
         manifest = await asyncio.to_thread(
             prepare_asset,
-            asset_id=safe_asset_id(request.asset_id),
+            asset_id=asset_id,
             source=source,
             media_kind=request.media_kind,
             root=ROOT,
