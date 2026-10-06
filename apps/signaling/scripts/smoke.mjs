@@ -348,7 +348,11 @@ try {
   // O Host está online e fora dos 16 contribuidores; usá-lo como alvo
   // permite validar o limite sem falhar antes na validação do participante.
   audioLoadHost.send('performance.participant.add', { queueEntryId: audioQueueEntryId, performanceId: audioPerformanceId, participantId: audioLoadHost.senderId });
-  await audioLoadHost.waitFor(m => m.type === 'session.error' && String(m.payload?.message ?? '').includes('microfones'));
+  await audioLoadHost.waitFor(
+    m => m.type === 'session.error' && String(m.payload?.message ?? '').includes('limite de participantes de áudio'),
+    TIMEOUT,
+    'audio-load: contributor limit'
+  );
   // O cantor principal (guest-1) permanece na apresentação e não pode ser removido.
   // A limpeza remove somente os 15 contribuidores adicionais (guest-2..guest-16).
   for (let index = 1; index < audioLoadGuests.length; index += 1) {
