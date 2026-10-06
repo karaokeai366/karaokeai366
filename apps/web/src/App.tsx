@@ -2265,11 +2265,9 @@ export function App() {
 
   const tvRouteRequested = window.location.pathname === '/tv';
 
-  useEffect(() => {
-    if (tvRouteRequested && window.location.search !== '?tv=1') {
-      window.location.replace('/');
-    }
-  }, [tvRouteRequested]);
+  // /tv is an explicit TV entry point. Keep the path so discovery is
+  // deterministic even when a Smart TV browser does not expose a useful UA.
+  // The root route remains available for browsers that we can identify as TVs.
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
