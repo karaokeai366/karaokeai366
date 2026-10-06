@@ -115,6 +115,9 @@ class SearchResult(BaseModel):
 
 class SearchResponse(BaseModel):
     results: list[SearchResult]
+    page: int = 1
+    page_size: int = 8
+    has_more: bool = False
 
 
 class DownloadRequest(BaseModel):
@@ -287,6 +290,7 @@ def health() -> dict[str, Any]:
 @app.get("/search", response_model=SearchResponse)
 def search(
     q: str = Query(min_length=2, max_length=160),
+    page: int = Query(default=1, ge=1, le=100),
     limit: int = Query(default=8, ge=1, le=15),
 ) -> SearchResponse:
     normalized_query = q.strip()
@@ -364,7 +368,14 @@ def search(
             )
         )
 
-    return SearchResponse(results=results)
+    start = (page - 1) * limit
+    paged_results = results[start : start + limit]
+    return SearchResponse(
+        results=paged_results,
+        page=page,
+        page_size=limit,
+        has_more=start + limit < len(results),
+    )
 
 
 @app.get("/lyrics", response_model=LyricsResponse)
