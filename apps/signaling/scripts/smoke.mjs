@@ -330,9 +330,21 @@ try {
     currentContributors = target;
   }
   audioLoadGuests[0].send('performance.audio.state', { queueEntryId: audioQueueEntryId, performanceId: audioPerformanceId, audioEnabled: false });
-  await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.audio.state' && m.payload?.payload?.participantId === audioLoadGuests[0].senderId);
+  await audioLoadGuests[0].waitFor(m =>
+    m.type === 'session.event' &&
+    m.payload?.type === 'performance.audio.state' &&
+    m.payload?.payload?.audio?.contributors?.some((p) => p.participantId === audioLoadGuests[0].senderId && p.audioEnabled === false),
+    TIMEOUT,
+    'audio-load: primary audio disabled'
+  );
   audioLoadGuests[0].send('performance.audio.state', { queueEntryId: audioQueueEntryId, performanceId: audioPerformanceId, audioEnabled: true });
-  await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.audio.state' && m.payload?.payload?.participantId === audioLoadGuests[0].senderId && m.payload?.payload?.audioEnabled === true);
+  await audioLoadGuests[0].waitFor(m =>
+    m.type === 'session.event' &&
+    m.payload?.type === 'performance.audio.state' &&
+    m.payload?.payload?.audio?.contributors?.some((p) => p.participantId === audioLoadGuests[0].senderId && p.audioEnabled === true),
+    TIMEOUT,
+    'audio-load: primary audio enabled'
+  );
   audioLoadHost.send('performance.participant.add', { queueEntryId: audioQueueEntryId, performanceId: audioPerformanceId, participantId: 'smoke-audio-overflow' });
   await audioLoadHost.waitFor(m => m.type === 'session.error' && String(m.payload?.message ?? '').includes('microfones'));
   // O cantor principal (guest-1) permanece na apresentação e não pode ser removido.
