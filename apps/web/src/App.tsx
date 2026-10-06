@@ -9,7 +9,10 @@ import {
   createSession,
   detectCapabilities,
   getDeviceId,
-  getLocalSession
+  getLocalIdentity,
+  getLocalSession,
+  saveLocalIdentity,
+  clearLocalIdentity
 } from './session';
 import { WebSocketTransport } from './wsTransport';
 import { getSongAssetManifest, getSongPreparationStatus, resolveSongAssetUrl, searchSongs, startSongPreparation, transposeSongKey } from './mediaClient';
@@ -2157,6 +2160,7 @@ export function App() {
   const initialParams = new URLSearchParams(window.location.search);
   const initialJoin = initialParams.get('join') === '1';
   const storedSession = getLocalSession();
+  const storedIdentity = getLocalIdentity();
 
   const [view, setView] = useState<View>(
     initialJoin ? 'join' : 'home'
@@ -2355,7 +2359,18 @@ export function App() {
     setConnection('connecting');
     setError('');
 
-    const participantId = getDeviceId();
+    const storedIdentityForJoin = getLocalIdentity();
+    const sameStoredSession = Boolean(
+      storedIdentityForJoin
+      && storedIdentityForJoin.sessionId === joinParams.sessionId
+      && storedIdentityForJoin.role !== 'host'
+    );
+    const participantId = sameStoredSession
+      ? storedIdentityForJoin!.participantId
+      : getDeviceId();
+    const participantName = sameStoredSession
+      ? storedIdentityForJoin!.name
+      : trimmed;
     const socket = new WebSocketTransport(getSignalingUrl());
 
     socket.subscribeConnection((state, intentional) => {
@@ -2374,6 +2389,13 @@ export function App() {
           setSession(incoming);
           localStorage.setItem('karaokeai.session.v1', JSON.stringify(incoming));
           setCurrentParticipantId(participantId);
+          saveLocalIdentity({
+            sessionId: joinParams.sessionId,
+            participantId,
+            name: participantName,
+            role: joinParams.tv ? 'tv' : 'participant',
+            hostParticipantId: incoming.hostParticipantId
+          });
           setView(joinParams.tv ? 'tv' : 'participant');
         }
         setConnection('online');
@@ -2395,11 +2417,18 @@ export function App() {
 
     try {
       await socket.connect();
-      socket.sendRaw('session.join', joinParams.sessionId, participantId, {
-        name: joinParams.tv ? 'TV' : trimmed,
-        role: joinParams.tv ? 'tv' : 'participant',
-        capabilities: detectCapabilities()
-      });
+      socket.sendRaw(
+        sameStoredSession ? 'session.reconnect' : 'session.join',
+        joinParams.sessionId,
+        participantId,
+        sameStoredSession
+          ? { role: joinParams.tv ? 'tv' : 'participant' }
+          : {
+              name: joinParams.tv ? 'TV' : participantName,
+              role: joinParams.tv ? 'tv' : 'participant',
+              capabilities: detectCapabilities()
+            }
+      );
       setTransport(socket);
     } catch (err) {
       socket.disconnect();
@@ -2469,6 +2498,22 @@ export function App() {
       reconnectInFlightRef.current = false;
     }
   }
+
+  useEffect(() => {
+    if (initialJoin || session || !storedSession || !storedIdentity) return;
+    if (storedIdentity.sessionId !== storedSession.sessionId) return;
+    if (storedIdentity.role === 'host') return;
+
+    const participant = storedSession.participants.find(
+      (item) => item.id === storedIdentity.participantId
+    );
+    if (!participant) return;
+
+    setSession(storedSession);
+    setCurrentParticipantId(storedIdentity.participantId);
+    setView(storedIdentity.role === 'tv' ? 'tv' : 'participant');
+    void reconnectCurrentSession(storedSession, storedIdentity.participantId);
+  }, [initialJoin, session, storedSession, storedIdentity]);
 
   async function searchMusic() {
     const query = searchQuery.trim();
@@ -2773,8 +2818,16 @@ export function App() {
   if (view === 'home') {
     const hasStoredHostSession = Boolean(
       storedSession
-      && storedSession.hostParticipantId
+      && storedIdentity?.role === 'host'
+      && storedIdentity.participantId === storedSession.hostParticipantId
       && storedSession.participants.some((participant) => participant.id === storedSession.hostParticipantId)
+    );
+    const hasStoredParticipantSession = Boolean(
+      storedSession
+      && storedIdentity
+      && storedIdentity.role !== 'host'
+      && storedIdentity.sessionId === storedSession.sessionId
+      && storedSession.participants.some((participant) => participant.id === storedIdentity.participantId)
     );
 
     const continueStoredHostSession = async () => {
@@ -2815,6 +2868,35 @@ export function App() {
                 <div className="stored-session-actions">
                   <button className="primary" onClick={() => void continueStoredHostSession()}>Continuar sessão</button>
                   <button className="secondary" onClick={discardStoredHostSession}>🆕 Nova sessão</button>
+                </div>
+              </div>
+            ) : hasStoredParticipantSession ? (
+              <div className="stored-session-card">
+                <div>
+                  <span className="eyebrow">SESSÃO LOCAL ENCONTRADA</span>
+                  <strong>Continuar como {storedIdentity!.name}</strong>
+                  <small>Sessão: {storedSession!.sessionId.slice(-8).toUpperCase()}</small>
+                </div>
+                <div className="stored-session-actions">
+                  <button
+                    className="primary"
+                    onClick={() => {
+                      setSession(storedSession);
+                      setCurrentParticipantId(storedIdentity!.participantId);
+                      setView(storedIdentity!.role === 'tv' ? 'tv' : 'participant');
+                      void reconnectCurrentSession(storedSession, storedIdentity!.participantId);
+                    }}
+                  >
+                    Continuar sessão
+                  </button>
+                  <button className="secondary" onClick={() => {
+                    clearLocalIdentity();
+                    localStorage.removeItem('karaokeai.session.v1');
+                    setSession(null);
+                    setCurrentParticipantId('');
+                    setTransport(null);
+                    setError('');
+                  }}>🆕 Entrar em outra sessão</button>
                 </div>
               </div>
             ) : (
