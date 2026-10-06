@@ -2884,7 +2884,7 @@ export function App() {
                       setSession(storedSession);
                       setCurrentParticipantId(storedIdentity!.participantId);
                       setView(storedIdentity!.role === 'tv' ? 'tv' : 'participant');
-                      void reconnectCurrentSession(storedSession, storedIdentity!.participantId);
+                      void reconnectCurrentSession(storedSession!, storedIdentity!.participantId);
                     }}
                   >
                     Continuar sessão
