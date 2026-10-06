@@ -24,3 +24,4 @@ services:
 
 volumes:
   karaokeai-media:
+  karaokeai-models:
