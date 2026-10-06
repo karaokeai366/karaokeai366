@@ -305,34 +305,35 @@ try {
     guest.send('session.join', { name: `Audio Guest ${index + 1}`, role: 'participant' });
     await guest.waitFor(m => m.type === 'session.joined');
   }
-  audioLoadGuests[0].send('queue.add', { title: 'Audio Load Song', artist: 'KaraokeAI', sourceId: 'audio-load-source' });
-  const audioAdded = await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'queue.added');
+  audioLoadHost.send('queue.add', { title: 'Audio Load Song', artist: 'KaraokeAI', sourceId: 'audio-load-source' });
+  const audioAdded = await audioLoadHost.waitFor(m => m.type === 'session.event' && m.payload?.type === 'queue.added');
   const audioQueueEntryId = audioAdded.payload.payload.entry.id;
-  audioLoadGuests[0].send('queue.status.set', { queueEntryId: audioQueueEntryId, status: 'ready' });
-  await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'queue.updated');
+  audioLoadHost.send('queue.status.set', { queueEntryId: audioQueueEntryId, status: 'ready' });
+  await audioLoadHost.waitFor(m => m.type === 'session.event' && m.payload?.type === 'queue.updated');
   audioLoadHost.send('queue.next');
   const audioStarted = await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.started');
   const audioPerformanceId = audioStarted.payload.payload.performanceId;
   const loadTargets = [2, 5, 8, 16];
   let currentContributors = 1;
   for (const target of loadTargets) {
-    for (let index = currentContributors; index < target; index += 1) {
+    for (let contributor = currentContributors; contributor < target; contributor += 1) {
+      const guest = audioLoadGuests[contributor - 1];
       audioLoadHost.send('performance.participant.add', {
         queueEntryId: audioQueueEntryId,
         performanceId: audioPerformanceId,
-        participantId: audioLoadGuests[index].senderId
+        participantId: guest.senderId
       });
-      await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.participant.added' && m.payload?.payload?.participant?.participantId === audioLoadGuests[index].senderId);
+      await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.participant.added' && m.payload?.payload?.participant?.participantId === guest.senderId);
     }
     currentContributors = target;
   }
-  audioLoadGuests[1].send('performance.audio.state', { queueEntryId: audioQueueEntryId, performanceId: audioPerformanceId, audioEnabled: false });
-  await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.audio.state' && m.payload?.payload?.participantId === audioLoadGuests[1].senderId);
-  audioLoadGuests[1].send('performance.audio.state', { queueEntryId: audioQueueEntryId, performanceId: audioPerformanceId, audioEnabled: true });
+  audioLoadGuests[0].send('performance.audio.state', { queueEntryId: audioQueueEntryId, performanceId: audioPerformanceId, audioEnabled: false });
+  await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.audio.state' && m.payload?.payload?.participantId === audioLoadGuests[0].senderId);
+  audioLoadGuests[0].send('performance.audio.state', { queueEntryId: audioQueueEntryId, performanceId: audioPerformanceId, audioEnabled: true });
   await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.audio.state' && m.payload?.payload?.participantId === audioLoadGuests[1].senderId && m.payload?.payload?.audioEnabled === true);
   audioLoadHost.send('performance.participant.add', { queueEntryId: audioQueueEntryId, performanceId: audioPerformanceId, participantId: 'smoke-audio-overflow' });
   await audioLoadHost.waitFor(m => m.type === 'session.error' && String(m.payload?.message ?? '').includes('microfones'));
-  for (let index = 1; index < audioLoadGuests.length; index += 1) {
+  for (let index = 0; index < audioLoadGuests.length; index += 1) {
     audioLoadHost.send('performance.participant.remove', { queueEntryId: audioQueueEntryId, performanceId: audioPerformanceId, participantId: audioLoadGuests[index].senderId });
     await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.participant.removed' && m.payload?.payload?.participantId === audioLoadGuests[index].senderId);
   }
