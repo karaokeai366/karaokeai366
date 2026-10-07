@@ -136,15 +136,15 @@ echo ========================================
 echo        KaraokeAI pronto para teste
 echo ========================================
 echo.
-echo PC/Host:
-echo   http://localhost:5173
-echo.
 if defined LAN_IP (
-  echo TV e celulares na mesma rede:
-  echo   http://%LAN_IP%:5173
-  echo.
-  echo Microfone nos celulares/HTTPS:
+  echo PC/Host - use este endereco:
   echo   https://%LAN_IP%:5443
+  echo.
+  echo TV e celulares na mesma rede:
+  echo   https://%LAN_IP%:5443
+  echo.
+  echo HTTP local - apenas diagnostico:
+  echo   http://localhost:5173
 ) else (
   echo TV e celulares:
   echo   http://IP_DO_PC:5173
