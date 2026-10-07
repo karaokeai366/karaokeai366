@@ -375,7 +375,7 @@ def separate_sources(
     output_dir = folder / "separated"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    separator_mode = os.getenv("KARAOKE_SEPARATOR_MODE", "fast").strip().lower()
+    separator_mode = os.getenv("KARAOKE_SEPARATOR_MODE", "quality").strip().lower()
     separator_model = os.getenv(
         "KARAOKE_SEPARATOR_MODEL",
         "UVR_MDXNET_KARA_2.onnx",
