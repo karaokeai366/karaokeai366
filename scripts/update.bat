@@ -49,24 +49,27 @@ if "%OLD_COMMIT%"=="%NEW_COMMIT%" (
 )
 
 set "LAN_IP="
-rem Detecta o IPv4 da rota padrao ativa. Isso evita escolher WSL, Hyper-V,
-rem OpenVPN ou outros adaptadores virtuais e funciona mesmo quando
-rem Get-NetIPConfiguration nao expõe o gateway como esperado.
-for /f "delims=" %%I in ('powershell -NoProfile -Command "$r=Get-NetRoute -AddressFamily IPv4 -DestinationPrefix ''0.0.0.0/0'' -ErrorAction SilentlyContinue ^| Where-Object {$_.NextHop -ne ''0.0.0.0''} ^| Sort-Object RouteMetric,ifMetric ^| Select-Object -First 1; if($r){$a=Get-NetIPAddress -AddressFamily IPv4 -InterfaceIndex $r.InterfaceIndex -ErrorAction SilentlyContinue ^| Where-Object {$_.IPAddress -notlike ''127.*'' -and $_.IPAddress -notlike ''169.254.*''} ^| Select-Object -First 1; if($a){$a.IPAddress}}"') do set "LAN_IP=%%I"
 
-if not defined LAN_IP (
-  echo [AVISO] Rota padrao nao retornou IP. Tentando enderecos privados ativos...
-  for /f "delims=" %%I in ('powershell -NoProfile -Command "$a=Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue ^| Where-Object {$_.IPAddress -match ''^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)'' -and $_.IPAddress -notlike ''169.254.*''} ^| Select-Object -First 1; if($a){$a.IPAddress}"') do set "LAN_IP=%%I"
-)
+if not exist ".dev-certs" mkdir ".dev-certs"
+
+rem Detecta o IPv4 pela rota padrao e grava o resultado em arquivo.
+rem O arquivo evita problemas de captura de variavel pelo FOR/FOR /F.
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$r=Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue ^| Where-Object {$_.NextHop -ne '0.0.0.0'} ^| Sort-Object RouteMetric,ifMetric ^| Select-Object -First 1; $ip=$null; if($r){$a=Get-NetIPAddress -AddressFamily IPv4 -InterfaceIndex $r.InterfaceIndex -ErrorAction SilentlyContinue ^| Where-Object {$_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*'} ^| Select-Object -First 1; if($a){$ip=$a.IPAddress}}; if(-not $ip){$a=Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue ^| Where-Object {$_.IPAddress -match '^(10\\.|192\\.168\\.|172\\.(1[6-9]|2[0-9]|3[0-1])\\.)' -and $_.IPAddress -notlike '169.254.*'} ^| Select-Object -First 1; if($a){$ip=$a.IPAddress}}; if($ip){Set-Content -NoNewline -Path '.dev-certs\\detected-lan-ip.txt' -Value $ip} else {Remove-Item '.dev-certs\\detected-lan-ip.txt' -ErrorAction SilentlyContinue}"
+
+if exist ".dev-certs\detected-lan-ip.txt" set /p LAN_IP=<".dev-certs\detected-lan-ip.txt"
 
 if not defined LAN_IP (
   echo [ERRO] Nao foi possivel detectar o IP LAN do PC.
-  echo        O KaraokeAI nao sera iniciado para evitar QR Code com 127.0.0.1.
+  echo        O KaraokeAI nao sera iniciado.
   exit /b 1
 )
 if "%LAN_IP%"=="127.0.0.1" (
-  echo [ERRO] O IP LAN foi detectado como 127.0.0.1.
-  echo        O KaraokeAI nao sera iniciado para evitar QR Code invalido.
+  echo [ERRO] IP LAN invalido: 127.0.0.1
+  echo        O KaraokeAI nao sera iniciado.
+  exit /b 1
+)
+if "%LAN_IP%"=="169.254.%LAN_IP%" (
+  echo [ERRO] IP LAN invalido.
   exit /b 1
 )
 set "KARAOKE_LAN_IP=%LAN_IP%"
