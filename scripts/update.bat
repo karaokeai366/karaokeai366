@@ -70,6 +70,8 @@ rem qualquer conflito de aspas ou caracteres especiais do CMD.
 >> ".dev-certs\\detect-lan-ip.ps1" echo }
 powershell -NoProfile -ExecutionPolicy Bypass -File ".dev-certs\\detect-lan-ip.ps1" > ".dev-certs\\detected-lan-ip.txt" 2>nul
 
+rem Carrega o IP que o PowerShell encontrou.
+if exist ".dev-certs\\detected-lan-ip.txt" set /p LAN_IP=<".dev-certs\\detected-lan-ip.txt"
 
 if not defined LAN_IP (
   echo [ERRO] Nao foi possivel detectar o IP LAN do PC.
