@@ -52,9 +52,23 @@ set "LAN_IP="
 
 if not exist ".dev-certs" mkdir ".dev-certs"
 
-rem Detecta o IPv4 do adaptador ativo que possui gateway padrao.
-rem O PowerShell nao usa pipes para evitar interpretacao do CMD.
-for /f "delims=" %%I in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "$cfg=Get-NetIPConfiguration; foreach($c in $cfg){if($c.NetAdapter.Status -eq ''Up'' -and $null -ne $c.IPv4DefaultGateway -and $null -ne $c.IPv4Address){foreach($a in @($c.IPv4Address)){ $ip=$a.IPAddress; if($ip -and $ip -notlike ''127.*'' -and $ip -notlike ''169.254.*''){Write-Output $ip; exit}}}}"') do if not defined LAN_IP set "LAN_IP=%%I"
+rem Detecta o IPv4 em um script PowerShell separado para evitar
+rem qualquer conflito de aspas ou caracteres especiais do CMD.
+> ".dev-certs\\detect-lan-ip.ps1" echo $cfg = Get-NetIPConfiguration
+>> ".dev-certs\\detect-lan-ip.ps1" echo foreach ($c in $cfg) {
+>> ".dev-certs\\detect-lan-ip.ps1" echo   if ($c.NetAdapter.Status -eq "Up" -and $null -ne $c.IPv4DefaultGateway -and $null -ne $c.IPv4Address) {
+>> ".dev-certs\\detect-lan-ip.ps1" echo     foreach ($a in @($c.IPv4Address)) {
+>> ".dev-certs\\detect-lan-ip.ps1" echo       $ip = $a.IPAddress
+>> ".dev-certs\\detect-lan-ip.ps1" echo       if ($ip -and $ip -notlike "127.*" -and $ip -notlike "169.254.*") { Write-Output $ip; exit }
+>> ".dev-certs\\detect-lan-ip.ps1" echo     }
+>> ".dev-certs\\detect-lan-ip.ps1" echo   }
+>> ".dev-certs\\detect-lan-ip.ps1" echo }
+>> ".dev-certs\\detect-lan-ip.ps1" echo $addrs = Get-NetIPAddress -AddressFamily IPv4
+>> ".dev-certs\\detect-lan-ip.ps1" echo foreach ($a in $addrs) {
+>> ".dev-certs\\detect-lan-ip.ps1" echo   $ip = $a.IPAddress
+>> ".dev-certs\\detect-lan-ip.ps1" echo   if ($ip -like "192.168.*" -or $ip -like "10.*" -or $ip -like "172.16.*" -or $ip -like "172.17.*" -or $ip -like "172.18.*" -or $ip -like "172.19.*" -or $ip -like "172.2*.*" -or $ip -like "172.3*.*") { Write-Output $ip; exit }
+>> ".dev-certs\\detect-lan-ip.ps1" echo }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".dev-certs\\detect-lan-ip.ps1" > ".dev-certs\\detected-lan-ip.txt" 2>nul
 
 
 if not defined LAN_IP (
