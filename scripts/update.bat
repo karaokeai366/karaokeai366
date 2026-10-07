@@ -52,10 +52,10 @@ set "LAN_IP="
 
 if not exist ".dev-certs" mkdir ".dev-certs"
 
-rem Detecta o IPv4 pela rota padrao ativa.
-rem Nao usamos pipes (|) no comando PowerShell porque o CMD pode
-rem interpretar esses caracteres antes de o PowerShell recebe-los.
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$routes=Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue; $best=$null; foreach($x in $routes){if($x.NextHop -ne '0.0.0.0' -and ($null -eq $best -or (($x.RouteMetric+$x.InterfaceMetric) -lt ($best.RouteMetric+$best.InterfaceMetric)))){$best=$x}}; $ip=$null; if($best){$addrs=Get-NetIPAddress -AddressFamily IPv4 -InterfaceIndex $best.InterfaceIndex -ErrorAction SilentlyContinue; foreach($a in $addrs){if($a.IPAddress -notlike '127.*' -and $a.IPAddress -notlike '169.254.*'){$ip=$a.IPAddress; break}}}; if(-not $ip){$addrs=Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue; foreach($a in $addrs){if(($a.IPAddress -like '10.*' -or $a.IPAddress -like '192.168.*' -or $a.IPAddress -like '172.16.*' -or $a.IPAddress -like '172.17.*' -or $a.IPAddress -like '172.18.*' -or $a.IPAddress -like '172.19.*' -or $a.IPAddress -like '172.2*.*' -or $a.IPAddress -like '172.3*.*') -and $a.IPAddress -notlike '169.254.*'){$ip=$a.IPAddress; break}}}; if($ip){Set-Content -NoNewline -Path '.dev-certs\\detected-lan-ip.txt' -Value $ip}else{Remove-Item '.dev-certs\\detected-lan-ip.txt' -ErrorAction SilentlyContinue}"
+rem Detecta o IPv4 do adaptador ativo que possui gateway padrao.
+rem O PowerShell nao usa pipes para evitar interpretacao do CMD.
+for /f "delims=" %%I in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "$cfg=Get-NetIPConfiguration; foreach($c in $cfg){if($c.NetAdapter.Status -eq ''Up'' -and $null -ne $c.IPv4DefaultGateway -and $null -ne $c.IPv4Address){foreach($a in @($c.IPv4Address)){ $ip=$a.IPAddress; if($ip -and $ip -notlike ''127.*'' -and $ip -notlike ''169.254.*''){Write-Output $ip; exit}}}}"') do if not defined LAN_IP set "LAN_IP=%%I"
+
 
 if not defined LAN_IP (
   echo [ERRO] Nao foi possivel detectar o IP LAN do PC.
