@@ -49,9 +49,15 @@ if "%OLD_COMMIT%"=="%NEW_COMMIT%" (
 )
 
 set "LAN_IP="
-for /f "delims=" %%I in ('powershell -NoProfile -Command "$x=Get-NetIPAddress -AddressFamily IPv4 ^| Where-Object {$_.IPAddress -notlike ''127.*'' -and $_.IPAddress -notlike ''169.254.*'' -and $_.PrefixOrigin -ne ''WellKnown''} ^| Select-Object -First 1 -ExpandProperty IPAddress; if($x){$x}"') do set "LAN_IP=%%I"
-if not defined LAN_IP set "LAN_IP=127.0.0.1"
+for /f "delims=" %%I in ('powershell -NoProfile -Command "$x=Get-NetIPConfiguration ^| Where-Object {$_.IPv4Address -and $_.IPv4DefaultGateway -and $_.NetAdapter.Status -eq ''Up''} ^| ForEach-Object {$_.IPv4Address.IPAddress} ^| Where-Object {$_ -notlike ''127.*'' -and $_ -notlike ''169.254.*''} ^| Select-Object -First 1; if($x){$x}"') do set "LAN_IP=%%I"
+
+if not defined LAN_IP (
+  echo [AVISO] Nao foi encontrado adaptador LAN com gateway ativo.
+  echo         Usando 127.0.0.1 apenas como fallback.
+  set "LAN_IP=127.0.0.1"
+)
 set "KARAOKE_LAN_IP=%LAN_IP%"
+
 if not exist ".dev-certs" mkdir ".dev-certs"
 set "OLD_LAN_IP="
 if exist ".dev-certs\lan-ip.txt" set /p OLD_LAN_IP=<".dev-certs\lan-ip.txt"
