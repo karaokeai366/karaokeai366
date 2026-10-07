@@ -35,7 +35,12 @@ const SIGNALING_PORT = 8787;
 function getSignalingUrl(): string {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const configured = import.meta.env.VITE_SIGNALING_URL as string | undefined;
-  if (!configured) return `${protocol}//${window.location.hostname}:${SIGNALING_PORT}`;
+  if (!configured) {
+    if (window.location.protocol === 'https:') {
+      return `wss://${window.location.host}/ws`;
+    }
+    return `${protocol}//${window.location.hostname}:${SIGNALING_PORT}`;
+  }
 
   try {
     const url = new URL(configured);
