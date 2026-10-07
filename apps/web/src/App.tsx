@@ -2237,7 +2237,7 @@ export function App() {
 
 
   useEffect(() => {
-    if (view !== 'home' || storedSession) return;
+    if (view !== 'home') return;
     let cancelled = false;
     void discoverActiveSessions(getSignalingUrl()).then((sessions) => {
       if (!cancelled) setActiveSessions(sessions);
@@ -3074,6 +3074,10 @@ export function App() {
       && storedIdentity.sessionId === storedSession.sessionId
       && storedSession.participants.some((participant) => participant.id === storedIdentity.participantId)
     );
+    const storedSessionIsActive = Boolean(
+      storedSession
+      && activeSessions.some((item) => item.sessionId === storedSession.sessionId)
+    );
 
     const continueStoredHostSession = async () => {
       if (!storedSession) return;
@@ -3126,33 +3130,53 @@ export function App() {
             {hasStoredHostSession ? (
               <div className="stored-session-card">
                 <div>
-                  <span className="eyebrow">SESSÃO LOCAL ENCONTRADA</span>
+                  <span className="eyebrow">
+                    {storedSessionIsActive ? '🟢 SESSÃO ATIVA' : '⚫ SESSÃO ENCERRADA'}
+                  </span>
                   <strong>Continuar como Host</strong>
-                  <small>Sessão: {storedSession!.sessionId.slice(-8).toUpperCase()}</small>
+                  <small>
+                    Sessão: {storedSession!.sessionId.slice(-8).toUpperCase()}
+                    {' · '}
+                    {storedSessionIsActive
+                      ? 'Disponível para reconexão e entrada de participantes.'
+                      : 'Mantida no histórico; não está disponível para entrada de participantes.'}
+                  </small>
                 </div>
                 <div className="stored-session-actions">
-                  <button className="primary" onClick={() => void continueStoredHostSession()}>Continuar sessão</button>
+                  <button className="primary" onClick={() => void continueStoredHostSession()}>
+                    {storedSessionIsActive ? 'Continuar sessão' : 'Recuperar como Host'}
+                  </button>
                   <button className="secondary" onClick={discardStoredHostSession}>🆕 Nova sessão</button>
                 </div>
               </div>
             ) : hasStoredParticipantSession ? (
               <div className="stored-session-card">
                 <div>
-                  <span className="eyebrow">SESSÃO LOCAL ENCONTRADA</span>
+                  <span className="eyebrow">
+                    {storedSessionIsActive ? '🟢 SESSÃO ATIVA' : '⚫ SESSÃO ENCERRADA'}
+                  </span>
                   <strong>Continuar como {storedIdentity!.name}</strong>
-                  <small>Sessão: {storedSession!.sessionId.slice(-8).toUpperCase()}</small>
+                  <small>
+                    Sessão: {storedSession!.sessionId.slice(-8).toUpperCase()}
+                    {' · '}
+                    {storedSessionIsActive
+                      ? 'Disponível para reconexão.'
+                      : 'Mantida no histórico; não é possível entrar nesta sessão.'}
+                  </small>
                 </div>
                 <div className="stored-session-actions">
                   <button
                     className="primary"
+                    disabled={!storedSessionIsActive}
                     onClick={() => {
+                      if (!storedSessionIsActive) return;
                       setSession(storedSession);
                       setCurrentParticipantId(storedIdentity!.participantId);
                       setView(storedIdentity!.role === 'tv' ? 'tv' : 'participant');
                       void reconnectCurrentSession(storedSession!, storedIdentity!.participantId);
                     }}
                   >
-                    Continuar sessão
+                    {storedSessionIsActive ? 'Continuar sessão' : 'Sessão encerrada'}
                   </button>
                   <button className="secondary" onClick={() => {
                     clearLocalIdentity();
