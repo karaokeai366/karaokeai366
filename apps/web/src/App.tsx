@@ -2432,10 +2432,11 @@ export function App() {
         const messageText = String((message.payload as { message?: string })?.message ?? 'Erro na sessão.');
         if (messageText === 'Sessão não encontrada.') {
           try {
+            const hostParticipant = state.participants.find((item) => item.id === participantId);
             socket.sendRaw('session.create', state.sessionId, participantId, {
               state,
-              name: participant.name,
-              capabilities: participant.capabilities
+              name: hostParticipant?.name ?? 'Host',
+              capabilities: hostParticipant?.capabilities
             });
             return;
           } catch {
