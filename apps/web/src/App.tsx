@@ -2429,7 +2429,26 @@ export function App() {
       }
 
       if (message.type === 'session.error') {
-        setError(String((message.payload as { message?: string })?.message ?? 'Erro na sessão.'));
+        const messageText = String((message.payload as { message?: string })?.message ?? 'Erro na sessão.');
+        // If the signaling container was restarted before persistent storage was
+        // enabled, recover the Host session from the browser's last snapshot
+        // using the same session ID instead of forcing the user to create a new room.
+        if (
+          activeParticipantId === activeSession.hostParticipantId
+          && messageText === 'Sessão não encontrada.'
+        ) {
+          try {
+            socket.sendRaw('session.create', activeSession.sessionId, activeParticipantId, {
+              state: activeSession,
+              name: participant.name,
+              capabilities: participant.capabilities
+            });
+            return;
+          } catch {
+            // Fall through to the normal connection error below.
+          }
+        }
+        setError(messageText);
         setConnection('error');
       }
     });
