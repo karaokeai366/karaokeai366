@@ -4,7 +4,7 @@ function getMediaWorkerUrl(): string {
   const configured = import.meta.env.VITE_MEDIA_WORKER_URL as string | undefined;
   if (configured) return configured.replace(/\/$/, '');
 
-  return `${window.location.protocol}//${window.location.hostname}:8790`;
+  return `${window.location.origin}/media-worker`;
 }
 
 interface WorkerSongSearchResult {
