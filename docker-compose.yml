@@ -5,6 +5,11 @@ services:
       dockerfile: apps/web/Dockerfile
     ports:
       - "5173:5173"
+      - "5443:5443"
+    environment:
+      KARAOKE_LAN_IP: ${KARAOKE_LAN_IP:-127.0.0.1}
+    volumes:
+      - ./.dev-certs:/etc/nginx/certs
     depends_on:
       - signaling
       - media-worker
@@ -29,6 +34,7 @@ services:
       KARAOKE_MEDIA_ROOT: /app/data/media
       AUDIO_SEPARATOR_MODEL_DIR: /app/data/models
       KARAOKE_ENABLE_SOURCE_SEPARATION: "true"
+      KARAOKE_SEPARATOR_MODE: quality
     ports:
       - "8790:8790"
     volumes:
