@@ -180,7 +180,14 @@ wss.on('connection', ws => {
 
     if (m.type === 'session.active.discover') {
       const activeSessions = [...sessions.values()]
-        .filter((session) => session.state?.status !== 'finished')
+        .filter((session) => {
+          if (session.state?.status === 'finished') return false;
+          const host = person(session, session.hostId);
+          // A sessão só é "ativa" para descoberta quando o Host está
+          // conectado. Sessões persistidas continuam no histórico, mas
+          // não devem aparecer como opções de entrada após uma queda/restart.
+          return Boolean(host && host.online !== false && session.clients.has(session.hostId));
+        })
         .sort((left, right) => Number(right.state.createdAt ?? 0) - Number(left.state.createdAt ?? 0))
         .map((session) => ({
           sessionId: session.id,
