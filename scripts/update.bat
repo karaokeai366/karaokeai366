@@ -55,9 +55,19 @@ rem Get-NetIPConfiguration nao expõe o gateway como esperado.
 for /f "delims=" %%I in ('powershell -NoProfile -Command "$r=Get-NetRoute -AddressFamily IPv4 -DestinationPrefix ''0.0.0.0/0'' -ErrorAction SilentlyContinue ^| Where-Object {$_.NextHop -ne ''0.0.0.0''} ^| Sort-Object RouteMetric,ifMetric ^| Select-Object -First 1; if($r){$a=Get-NetIPAddress -AddressFamily IPv4 -InterfaceIndex $r.InterfaceIndex -ErrorAction SilentlyContinue ^| Where-Object {$_.IPAddress -notlike ''127.*'' -and $_.IPAddress -notlike ''169.254.*''} ^| Select-Object -First 1; if($a){$a.IPAddress}}"') do set "LAN_IP=%%I"
 
 if not defined LAN_IP (
-  echo [AVISO] Nao foi encontrado IPv4 na rota padrao ativa.
-  echo         Usando 127.0.0.1 apenas como fallback.
-  set "LAN_IP=127.0.0.1"
+  echo [AVISO] Rota padrao nao retornou IP. Tentando enderecos privados ativos...
+  for /f "delims=" %%I in ('powershell -NoProfile -Command "$a=Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue ^| Where-Object {$_.IPAddress -match ''^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)'' -and $_.IPAddress -notlike ''169.254.*''} ^| Select-Object -First 1; if($a){$a.IPAddress}"') do set "LAN_IP=%%I"
+)
+
+if not defined LAN_IP (
+  echo [ERRO] Nao foi possivel detectar o IP LAN do PC.
+  echo        O KaraokeAI nao sera iniciado para evitar QR Code com 127.0.0.1.
+  exit /b 1
+)
+if "%LAN_IP%"=="127.0.0.1" (
+  echo [ERRO] O IP LAN foi detectado como 127.0.0.1.
+  echo        O KaraokeAI nao sera iniciado para evitar QR Code invalido.
+  exit /b 1
 )
 set "KARAOKE_LAN_IP=%LAN_IP%"
 echo [OK] IP LAN detectado: %LAN_IP%
