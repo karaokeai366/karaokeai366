@@ -3087,14 +3087,23 @@ export function App() {
 
     const discardStoredHostSession = () => {
       const confirmed = window.confirm(
-        'Iniciar uma sessão nova?\\n\\nA sessão anterior permanecerá no histórico somente se ela já tiver sido encerrada ou reiniciada pelo Host.'
+        'Iniciar uma sessão nova?\\n\\nA conexão da sessão anterior será encerrada neste navegador. A sessão anterior continuará preservada no servidor para recuperação.'
       );
       if (!confirmed) return;
+
+      clearReconnectSchedule();
+      reconnectInFlightRef.current = false;
+      transport?.disconnect();
+      setTransport(null);
+
       localStorage.removeItem('karaokeai.session.v1');
+      clearLocalIdentity();
+
       setSession(null);
       setCurrentParticipantId('');
-      setTransport(null);
+      setConnection('offline');
       setError('');
+      setName('');
     };
 
     return (
