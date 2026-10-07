@@ -186,6 +186,36 @@ LEGACY_SNAPSHOT_BROADCAST=true
 
 The signaling service runs `src/serverPartyReadyV2.ts` by default.
 
+## Operacao do Host de teste
+
+Para o teste real do KaraokeAI, o projeto pode ser executado sem VS Code. O Docker Compose sobe a aplicacao Web, o Signaling e o Media Worker como uma unica stack.
+
+Na maquina Windows de teste:
+
+```text
+scripts\\update.bat   -> baixa o main e reconstrói as imagens
+scripts\\start.bat    -> inicia a stack completa
+scripts\\status.bat   -> mostra containers e portas
+scripts\\logs.bat     -> acompanha os logs
+scripts\\restart.bat  -> reinicia a stack
+scripts\\stop.bat     -> para a stack
+scripts\\test.bat     -> executa smoke/compile checks internos
+```
+
+Depois de iniciar, o Host Web fica em:
+
+```text
+http://localhost:5173
+```
+
+Para celulares e TV na mesma rede, use o endereço LAN do PC:
+
+```text
+http://IP_DO_PC:5173
+```
+
+O VS Code continua útil para desenvolvimento e análise local, mas **não é necessário para executar o ambiente de teste integrado**. O objetivo deste fluxo é aproximar o teste do modo como o KaraokeAI será operado como produto.
+
 ## Local development
 
 ### 1. Signaling
