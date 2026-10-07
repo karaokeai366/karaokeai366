@@ -49,14 +49,18 @@ if "%OLD_COMMIT%"=="%NEW_COMMIT%" (
 )
 
 set "LAN_IP="
-for /f "delims=" %%I in ('powershell -NoProfile -Command "$x=Get-NetIPConfiguration ^| Where-Object {$_.IPv4Address -and $_.IPv4DefaultGateway -and $_.NetAdapter.Status -eq ''Up''} ^| ForEach-Object {$_.IPv4Address.IPAddress} ^| Where-Object {$_ -notlike ''127.*'' -and $_ -notlike ''169.254.*''} ^| Select-Object -First 1; if($x){$x}"') do set "LAN_IP=%%I"
+rem Detecta o IPv4 da rota padrao ativa. Isso evita escolher WSL, Hyper-V,
+rem OpenVPN ou outros adaptadores virtuais e funciona mesmo quando
+rem Get-NetIPConfiguration nao expõe o gateway como esperado.
+for /f "delims=" %%I in ('powershell -NoProfile -Command "$r=Get-NetRoute -AddressFamily IPv4 -DestinationPrefix ''0.0.0.0/0'' -ErrorAction SilentlyContinue ^| Where-Object {$_.NextHop -ne ''0.0.0.0''} ^| Sort-Object RouteMetric,ifMetric ^| Select-Object -First 1; if($r){$a=Get-NetIPAddress -AddressFamily IPv4 -InterfaceIndex $r.InterfaceIndex -ErrorAction SilentlyContinue ^| Where-Object {$_.IPAddress -notlike ''127.*'' -and $_.IPAddress -notlike ''169.254.*''} ^| Select-Object -First 1; if($a){$a.IPAddress}}"') do set "LAN_IP=%%I"
 
 if not defined LAN_IP (
-  echo [AVISO] Nao foi encontrado adaptador LAN com gateway ativo.
+  echo [AVISO] Nao foi encontrado IPv4 na rota padrao ativa.
   echo         Usando 127.0.0.1 apenas como fallback.
   set "LAN_IP=127.0.0.1"
 )
 set "KARAOKE_LAN_IP=%LAN_IP%"
+echo [OK] IP LAN detectado: %LAN_IP%
 
 if not exist ".dev-certs" mkdir ".dev-certs"
 set "OLD_LAN_IP="
