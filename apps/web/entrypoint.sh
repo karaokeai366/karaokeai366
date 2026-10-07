@@ -13,6 +13,13 @@ fi
 
 mkdir -p "$CERT_DIR"
 
+# Runtime configuration: the Vite bundle is static, so the LAN address
+# must be injected when the container starts. This lets the Host be opened
+# on localhost while QR Codes still point to the PC over HTTPS.
+cat > /usr/share/nginx/html/runtime-config.js <<EOF
+window.__KARAOKEAI_PUBLIC_APP_URL__ = "https://$LAN_IP:5443";
+EOF
+
 # Regenerate certificates when they are missing, invalid, or do not contain
 # the current LAN IP. This also repairs certificates left by an earlier
 # failed OpenSSL generation.
