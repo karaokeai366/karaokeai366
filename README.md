@@ -214,6 +214,16 @@ Para celulares e TV na mesma rede, use o endereço LAN do PC:
 http://IP_DO_PC:5173
 ```
 
+Para ativar o microfone em celulares, use o endpoint HTTPS:
+
+```text
+https://IP_DO_PC:5443
+```
+
+Na primeira abertura, o navegador poderá mostrar um aviso de certificado local. É esperado no ambiente de teste; aceite a exceção para continuar. O HTTPS também mantém o WebSocket e o Media Worker no mesmo endereço seguro.
+
+A separação vocal do ambiente Docker usa o modo de maior qualidade por padrão. O cache de mídia do ambiente de qualidade é separado do cache anterior, portanto músicas antigas não serão reutilizadas no primeiro teste.
+
 O VS Code continua útil para desenvolvimento e análise local, mas **não é necessário para executar o ambiente de teste integrado**. O objetivo deste fluxo é aproximar o teste do modo como o KaraokeAI será operado como produto.
 
 ## Local development
