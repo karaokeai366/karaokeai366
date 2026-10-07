@@ -97,6 +97,18 @@ if not "%OLD_LAN_IP%"=="%LAN_IP%" (
 )
 echo [OK] HTTPS LAN preparado em %LAN_IP%
 
+echo.
+echo [OK] Liberando portas do KaraokeAI no Firewall do Windows...
+netsh advfirewall firewall show rule name="KaraokeAI HTTPS 5443" >nul 2>&1
+if errorlevel 1 (
+  netsh advfirewall firewall add rule name="KaraokeAI HTTPS 5443" dir=in action=allow protocol=TCP localport=5443 profile=private >nul 2>&1
+)
+netsh advfirewall firewall show rule name="KaraokeAI HTTP 5173" >nul 2>&1
+if errorlevel 1 (
+  netsh advfirewall firewall add rule name="KaraokeAI HTTP 5173" dir=in action=allow protocol=TCP localport=5173 profile=private >nul 2>&1
+)
+echo [OK] Firewall configurado para a rede privada.
+
 echo [3/5] Preparando containers...
 if "%CODE_CHANGED%"=="1" (
   echo Alteracoes detectadas: reconstruindo imagens...
