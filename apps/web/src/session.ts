@@ -130,17 +130,19 @@ function getPublicAppOrigin(): string {
   const configured = import.meta.env.VITE_PUBLIC_APP_URL as string | undefined;
   if (configured) return configured.replace(/\/$/, '');
 
-  // QR codes must point to an address reachable by other devices. When the
-  // Host opened the app using localhost, the browser cannot discover the PC's
-  // LAN address reliably, so require an explicit public URL in that case.
+  const runtime = (window as Window & { __KARAOKEAI_PUBLIC_APP_URL__?: string }).__KARAOKEAI_PUBLIC_APP_URL__;
+  if (runtime) return runtime.replace(/\/$/, '');
+
+  // Fallback for non-Docker/local development: when the page is already
+  // opened through a LAN address, that origin is directly reachable.
   const hostname = window.location.hostname;
-  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
-    throw new Error(
-      'O endereço do QR Code não está acessível pela rede. Configure VITE_PUBLIC_APP_URL com o endereço do PC, por exemplo http://192.168.99.23:5173.'
-    );
+  if (hostname !== 'localhost' && hostname !== '127.0.0.1' && hostname !== '::1') {
+    return window.location.origin;
   }
 
-  return window.location.origin;
+  throw new Error(
+    'Não foi possível determinar o endereço de rede do PC para o QR Code.'
+  );
 }
 
 export function buildJoinUrl(session: SessionState): string {
