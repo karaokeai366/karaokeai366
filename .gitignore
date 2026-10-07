@@ -19,3 +19,6 @@ data/
 # Local credentials and exported browser data
 secrets/
 *.cookies.txt
+
+# Local HTTPS development certificate
+.dev-certs/
