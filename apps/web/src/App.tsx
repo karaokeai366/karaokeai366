@@ -1841,21 +1841,35 @@ function TvStage({
     const context = audioContextRef.current ?? new AudioContextCtor();
     audioContextRef.current = context;
 
+    // A Smart TV browser may support the music element but reject
+    // MediaElementAudioSourceNode for a remote WebRTC element. Do not let
+    // the voice mixer failure disable the instrumental playback.
     if (!musicSourceRef.current) {
-      musicSourceRef.current = context.createMediaElementSource(audioRef.current);
-      musicGainRef.current = context.createGain();
-      musicSourceRef.current.connect(musicGainRef.current);
-      musicGainRef.current.connect(context.destination);
+      try {
+        musicSourceRef.current = context.createMediaElementSource(audioRef.current);
+        musicGainRef.current = context.createGain();
+        musicSourceRef.current.connect(musicGainRef.current);
+        musicGainRef.current.connect(context.destination);
+      } catch {
+        musicSourceRef.current = null;
+        musicGainRef.current = null;
+      }
     }
 
     if (!voiceSourceRef.current) {
-      remoteAudioRef.current.crossOrigin = 'anonymous';
-      const voiceGain = context.createGain();
-      const voiceSource = context.createMediaElementSource(remoteAudioRef.current);
-      voiceSourceRef.current = voiceSource;
-      voiceGainRef.current = voiceGain;
-      voiceSource.connect(voiceGain);
-      voiceGain.connect(context.destination);
+      try {
+        remoteAudioRef.current.crossOrigin = 'anonymous';
+        const voiceGain = context.createGain();
+        const voiceSource = context.createMediaElementSource(remoteAudioRef.current);
+        voiceSourceRef.current = voiceSource;
+        voiceGainRef.current = voiceGain;
+        voiceSource.connect(voiceGain);
+        voiceGain.connect(context.destination);
+      } catch {
+        // Voice mixing is optional. The TV must still be able to play music.
+        voiceSourceRef.current = null;
+        voiceGainRef.current = null;
+      }
     }
 
     if (musicGainRef.current) musicGainRef.current.gain.value = musicVolume / 100;
@@ -1864,35 +1878,50 @@ function TvStage({
     return context;
   }
 
-  function enableAudio() {
+  async function enableAudio() {
     const audio = audioRef.current;
     const remoteAudio = remoteAudioRef.current;
     if (!audio) return;
 
     try {
       const context = setupMixer();
-      if (context?.state === 'suspended') void context.resume();
+
+      if (context?.state === 'suspended') {
+        await context.resume();
+      }
 
       const startsInMs = Math.max(0, Number(playing?.playbackStartedAt ?? 0) - Date.now());
       audio.currentTime = startsInMs > 0 ? 0 : elapsed;
-      setAudioEnabled(true);
-      setAudioError('');
 
-      if (startsInMs > 0) {
+      if (startsInMs <= 0) {
+        // Try the normal audio path first. If the AudioContext mixer is not
+        // supported by the TV, the HTMLMediaElement can still play directly.
+        try {
+          await audio.play();
+        } catch {
+          if (context && context.state !== 'running') {
+            await context.resume().catch(() => undefined);
+          }
+          await audio.play();
+        }
+
+        if (remoteAudio?.srcObject) {
+          await remoteAudio.play().catch(() => undefined);
+        }
+      } else {
         audio.pause();
         remoteAudio?.pause();
-      } else {
-        const playback = [
-          audio.play(),
-          ...(remoteAudio?.srcObject ? [remoteAudio.play()] : [])
-        ];
-        Promise.all(playback).catch(() => {
-          setAudioEnabled(false);
-          setAudioError('Não foi possível iniciar o áudio nesta tela.');
-        });
       }
+
+      setAudioEnabled(true);
+      setAudioError('');
     } catch (error) {
-      setAudioError(error instanceof Error ? error.message : 'Não foi possível iniciar o mixer de áudio.');
+      setAudioEnabled(false);
+      setAudioError(
+        error instanceof Error
+          ? `Não foi possível iniciar o áudio nesta TV: ${error.message}`
+          : 'Não foi possível iniciar o áudio nesta TV.'
+      );
     }
   }
 
