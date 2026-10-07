@@ -52,11 +52,10 @@ set "LAN_IP="
 
 if not exist ".dev-certs" mkdir ".dev-certs"
 
-rem Detecta o IPv4 pela rota padrao e grava o resultado em arquivo.
-rem O arquivo evita problemas de captura de variavel pelo FOR/FOR /F.
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$r=Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue ^| Where-Object {$_.NextHop -ne '0.0.0.0'} ^| Sort-Object RouteMetric,ifMetric ^| Select-Object -First 1; $ip=$null; if($r){$a=Get-NetIPAddress -AddressFamily IPv4 -InterfaceIndex $r.InterfaceIndex -ErrorAction SilentlyContinue ^| Where-Object {$_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*'} ^| Select-Object -First 1; if($a){$ip=$a.IPAddress}}; if(-not $ip){$a=Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue ^| Where-Object {$_.IPAddress -match '^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)' -and $_.IPAddress -notlike '169.254.*'} ^| Select-Object -First 1; if($a){$ip=$a.IPAddress}}; if($ip){Set-Content -NoNewline -Path '.dev-certs\\detected-lan-ip.txt' -Value $ip} else {Remove-Item '.dev-certs\\detected-lan-ip.txt' -ErrorAction SilentlyContinue}"
-
-if exist ".dev-certs\detected-lan-ip.txt" set /p LAN_IP=<".dev-certs\detected-lan-ip.txt"
+rem Detecta o IPv4 pela rota padrao ativa.
+rem Nao usamos pipes (|) no comando PowerShell porque o CMD pode
+rem interpretar esses caracteres antes de o PowerShell recebe-los.
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$routes=Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue; $best=$null; foreach($x in $routes){if($x.NextHop -ne '0.0.0.0' -and ($null -eq $best -or (($x.RouteMetric+$x.InterfaceMetric) -lt ($best.RouteMetric+$best.InterfaceMetric)))){$best=$x}}; $ip=$null; if($best){$addrs=Get-NetIPAddress -AddressFamily IPv4 -InterfaceIndex $best.InterfaceIndex -ErrorAction SilentlyContinue; foreach($a in $addrs){if($a.IPAddress -notlike '127.*' -and $a.IPAddress -notlike '169.254.*'){$ip=$a.IPAddress; break}}}; if(-not $ip){$addrs=Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue; foreach($a in $addrs){if(($a.IPAddress -like '10.*' -or $a.IPAddress -like '192.168.*' -or $a.IPAddress -like '172.16.*' -or $a.IPAddress -like '172.17.*' -or $a.IPAddress -like '172.18.*' -or $a.IPAddress -like '172.19.*' -or $a.IPAddress -like '172.2*.*' -or $a.IPAddress -like '172.3*.*') -and $a.IPAddress -notlike '169.254.*'){$ip=$a.IPAddress; break}}}; if($ip){Set-Content -NoNewline -Path '.dev-certs\\detected-lan-ip.txt' -Value $ip}else{Remove-Item '.dev-certs\\detected-lan-ip.txt' -ErrorAction SilentlyContinue}"
 
 if not defined LAN_IP (
   echo [ERRO] Nao foi possivel detectar o IP LAN do PC.
