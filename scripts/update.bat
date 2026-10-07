@@ -109,7 +109,14 @@ if "%HEALTH_OK%"=="1" (
 )
 
 echo.
-echo [5/5] Enderecos para teste...
+echo [5/6] Status automatico...
+call scripts\status.bat
+if errorlevel 1 (
+  echo [AVISO] O status encontrou um problema ao verificar os servicos.
+)
+
+echo.
+echo [6/6] Enderecos para teste...
 echo.
 echo ========================================
 echo        KaraokeAI pronto para teste
