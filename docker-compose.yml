@@ -1,4 +1,15 @@
 services:
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    ports:
+      - "5173:5173"
+    depends_on:
+      - signaling
+      - media-worker
+    restart: unless-stopped
+
   signaling:
     build:
       context: ./apps/signaling
