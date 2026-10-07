@@ -15,8 +15,11 @@ services:
       context: ./apps/signaling
     environment:
       PORT: 8787
+      KARAOKE_SESSION_STORE: /app/data/sessions.json
     ports:
       - "8787:8787"
+    volumes:
+      - karaokeai-session:/app/data
     restart: unless-stopped
 
   media-worker:
@@ -36,3 +39,4 @@ services:
 volumes:
   karaokeai-media:
   karaokeai-models:
+  karaokeai-session:
