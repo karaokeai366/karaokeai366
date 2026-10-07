@@ -14,7 +14,7 @@ import {
   saveLocalIdentity,
   clearLocalIdentity
 } from './session';
-import { WebSocketTransport } from './wsTransport';
+import { discoverActiveSessions, WebSocketTransport, type ActiveSessionSummary } from './wsTransport';
 import { getSongAssetManifest, getSongPreparationStatus, resolveSongAssetUrl, searchSongs, startSongPreparation, transposeSongKey } from './mediaClient';
 import type { SongSearchResult } from '../../../packages/media/src/song';
 import { getWebRtcConfiguration, isWebRtcSupported, type WebRtcSignal } from './webrtc';
@@ -2225,7 +2225,19 @@ export function App() {
   const [capacityDraft, setCapacityDraft] = useState('50');
   const [changingKeyId, setChangingKeyId] = useState<string | null>(null);
   const [webrtcSignals, setWebRtcSignals] = useState<Array<{ id?: string; payload?: { command?: string; data?: WebRtcSignal } }>>([]);
+  const [activeSessions, setActiveSessions] = useState<ActiveSessionSummary[]>([]);
 
+
+  useEffect(() => {
+    if (view !== 'home' || storedSession) return;
+    let cancelled = false;
+    void discoverActiveSessions(getSignalingUrl()).then((sessions) => {
+      if (!cancelled) setActiveSessions(sessions);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [view, storedSession]);
 
   function scheduleReconnect(participantIdOverride?: string): void {
     if (reconnectTimerRef.current !== null) return;
@@ -2980,6 +2992,26 @@ export function App() {
             <span className="eyebrow">MOBILE-FIRST • ANDROID • IOS • TV</span>
             <h1>Seu karaokê.<br />Sua rede.<br /><span>Seu palco.</span></h1>
             <p>O primeiro aparelho cria a sessão e vira o anfitrião. Os demais entram por QR Code e podem contribuir com processamento.</p>
+            {!hasStoredHostSession && !hasStoredParticipantSession && activeSessions.length > 0 && (
+              <div className="stored-session-card">
+                <div>
+                  <span className="eyebrow">🟢 SESSÃO ABERTA NO HOST</span>
+                  <strong>{activeSessions[0].hostName}</strong>
+                  <small>
+                    Código: {activeSessions[0].sessionId.slice(-8).toUpperCase()}
+                    {' · '}
+                    {activeSessions[0].participants.filter((participant) => participant.role !== 'tv').length} participante(s)
+                    {' · '}
+                    {activeSessions[0].queueSize} música(s) na fila
+                  </small>
+                </div>
+                <div className="stored-session-actions">
+                  <button className="secondary" onClick={() => {
+                    void discoverActiveSessions(getSignalingUrl()).then(setActiveSessions);
+                  }}>🔄 Atualizar</button>
+                </div>
+              </div>
+            )}
             {hasStoredHostSession ? (
               <div className="stored-session-card">
                 <div>
