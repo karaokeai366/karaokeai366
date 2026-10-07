@@ -299,22 +299,9 @@ function injectHostSessionControls(transport: WebSocketTransport): void {
         status: 'lobby'
       } as SessionState;
 
-      try {
-        transport.sendRaw('session.create', nextSessionId, transport.participantId, {
-          state: nextState,
-          name: host.name,
-          capabilities: host.capabilities
-        });
-        localStorage.setItem(SESSION_KEY, JSON.stringify(nextState));
-        // Atualiza o React imediatamente. O snapshot session.created do servidor
-        // chega em seguida e confirma o mesmo estado, sem depender de reload.
-        window.dispatchEvent(new CustomEvent('karaokeai.session.created', { detail: nextState }));
-        // Keep the current page and socket alive. The server responds with
-        // session.created, and App.tsx updates the React state/QR from that snapshot.
-        // Reloading here could race with the new session and briefly restore the old one.
-      } catch {
+      void transport.replaceHostSession(nextState).catch(() => {
         window.alert('Não foi possível iniciar a nova sessão porque a conexão com o servidor foi perdida.');
-      }
+      });
     };
 
     const endButton = document.createElement('button');
@@ -532,6 +519,33 @@ export class WebSocketTransport {
     this.socket?.close();
     this.socket = null;
     document.getElementById(HOST_CONTROLS_ID)?.remove();
+  }
+
+  async replaceHostSession(state: SessionState): Promise<void> {
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+      throw new Error('Transporte WebSocket desconectado.');
+    }
+
+    // A nova sessão sempre começa em uma conexão WebSocket nova. Isso evita
+    // misturar contexto, cursores de eventos ou callbacks da sessão anterior.
+    this.intentionalClose = true;
+    this.socket.close();
+    this.socket = null;
+    document.getElementById(HOST_CONTROLS_ID)?.remove();
+
+    this.sessionState = null;
+    this.eventCursor = null;
+    this.recoveringSnapshot = false;
+    this.sessionId = '';
+    this.senderId = state.hostParticipantId;
+
+    await this.connect();
+
+    this.sendRaw('session.create', state.sessionId, state.hostParticipantId, {
+      state,
+      name: state.participants.find((participant) => participant.id === state.hostParticipantId)?.name ?? 'Host',
+      capabilities: state.participants.find((participant) => participant.id === state.hostParticipantId)?.capabilities
+    });
   }
 
   send(message: Envelope): void {
