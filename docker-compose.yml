@@ -38,11 +38,11 @@ services:
     ports:
       - "8790:8790"
     volumes:
-      - karaokeai-media:/app/data/media
+      - karaokeai-media-quality:/app/data/media
       - karaokeai-models:/app/data/models
     restart: unless-stopped
 
 volumes:
-  karaokeai-media:
+  karaokeai-media-quality:
   karaokeai-models:
   karaokeai-session:
