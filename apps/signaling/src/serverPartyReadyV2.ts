@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
 
 type Role = 'host' | 'participant' | 'tv';
@@ -11,8 +13,56 @@ const port = Number(process.env.PORT ?? 8787);
 const defaultCapacity = clamp(Number(process.env.DEFAULT_SESSION_CAPACITY ?? 50), 1, 50);
 const maxSongs = clamp(Number(process.env.MAX_SONGS_PER_PARTICIPANT ?? 3), 1, 20);
 const maxPerformanceContributors = clamp(Number(process.env.MAX_PERFORMANCE_CONTRIBUTORS ?? 16), 2, 16);
+const sessionStorePath = process.env.KARAOKE_SESSION_STORE ?? '/app/data/sessions.json';
 const sessions = new Map<string, Session>();
 const sockets = new Map<WebSocket, Client>();
+
+function persistSessions(): void {
+  try {
+    mkdirSync(dirname(sessionStorePath), { recursive: true });
+    const persisted = [...sessions.values()]
+      .filter((session) => session.state?.status !== 'finished')
+      .map((session) => ({
+        id: session.id,
+        hostId: session.hostId,
+        state: session.state,
+        sequence: session.sequence
+      }));
+    writeFileSync(sessionStorePath, JSON.stringify({ version: 1, sessions: persisted }), 'utf8');
+  } catch (error) {
+    console.error('[session-store] não foi possível salvar as sessões:', error);
+  }
+}
+
+function restoreSessions(): void {
+  try {
+    if (!existsSync(sessionStorePath)) return;
+    const raw = JSON.parse(readFileSync(sessionStorePath, 'utf8'));
+    const stored = Array.isArray(raw?.sessions) ? raw.sessions : [];
+    for (const item of stored) {
+      if (!validId(item?.id) || !validId(item?.hostId) || !item?.state) continue;
+      const state = initialState(item.state, item.id, item.hostId);
+      // Após um restart do container não há sockets antigos. Todos os
+      // participantes precisarão reconectar para voltar a online.
+      state.participants = state.participants.map((participant: any) => ({
+        ...participant,
+        online: false
+      }));
+      sessions.set(item.id, {
+        id: item.id,
+        hostId: item.hostId,
+        state,
+        clients: new Map(),
+        sequence: Number.isFinite(item.sequence) ? Number(item.sequence) : 0
+      });
+    }
+    if (stored.length) {
+      console.log(`[session-store] ${stored.length} sessão(ões) restaurada(s).`);
+    }
+  } catch (error) {
+    console.error('[session-store] não foi possível restaurar as sessões:', error);
+  }
+}
 
 function findTvSession(): Session | undefined {
   const candidates = [...sessions.values()].filter((session) => {
@@ -34,6 +84,7 @@ function snapshot(s: Session) { return { state: s.state, sequence: s.sequence };
 function emit(s: Session, type: EventType, payload: unknown, actor?: string, audience?: string[]) {
   const event = { eventId: randomUUID(), sequence: ++s.sequence, sessionId: s.id, type, timestamp: Date.now(), ...(actor ? { actorParticipantId: actor } : {}), ...(audience ? { audience: { participantIds: audience } } : {}), payload };
   for (const c of s.clients.values()) if (!audience || audience.includes(c.participantId)) send(c.socket, 'session.event', event);
+  persistSessions();
 }
 function changed(s: Session, type: EventType, payload: unknown, actor?: string, audience?: string[]) { s.state.queueSize = s.state.queue.length; emit(s, type, payload, actor, audience); }
 function initialState(state: any, sid: string, hostId: string) {
@@ -120,10 +171,33 @@ function applyQueueStatus(s: Session, q: any, payload: any, actor: string) {
   changed(s, 'queue.updated', { entry: updated, queueEntryId: q.id }, actor);
 }
 
+restoreSessions();
+
 const wss = new WebSocketServer({ port });
 wss.on('connection', ws => {
   ws.on('message', raw => {
     let m: Message; try { m = JSON.parse(raw.toString()); } catch { fail(ws, 'Mensagem JSON inválida.'); return; }
+
+    if (m.type === 'session.active.discover') {
+      const activeSessions = [...sessions.values()]
+        .filter((session) => session.state?.status !== 'finished')
+        .sort((left, right) => Number(right.state.createdAt ?? 0) - Number(left.state.createdAt ?? 0))
+        .map((session) => ({
+          sessionId: session.id,
+          hostParticipantId: session.hostId,
+          hostName: String(person(session, session.hostId)?.name ?? 'Host'),
+          createdAt: Number(session.state.createdAt ?? 0),
+          status: session.state.status,
+          participants: session.state.participants.filter((p: any) => p.role !== 'tv').map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            role: p.role,
+            online: p.online !== false
+          })),
+          queueSize: Number(session.state.queueSize ?? session.state.queue?.length ?? 0)
+        }));
+      return send(ws, 'session.active.discovered', { sessions: activeSessions });
+    }
 
     if (m.type === 'session.tv.discover') {
       const session = findTvSession();
@@ -167,6 +241,7 @@ wss.on('connection', ws => {
       state.restartCreditsByParticipant[m.senderId] ??= restartCredits(state.roundMode);
       const s: Session = { id: m.sessionId, hostId: m.senderId, state, clients: new Map(), sequence: 0 };
       const c: Client = { socket: ws, sessionId: s.id, participantId: m.senderId, role: 'host' }; s.clients.set(c.participantId, c); sockets.set(ws, c); sessions.set(s.id, s);
+      persistSessions();
       return send(ws, 'session.created', { sessionId: s.id, hostParticipantId: s.hostId, ...snapshot(s) });
     }
 
