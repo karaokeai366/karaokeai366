@@ -48,7 +48,22 @@ if "%OLD_COMMIT%"=="%NEW_COMMIT%" (
   set "CODE_CHANGED=1"
 )
 
-echo.
+set "LAN_IP="
+for /f "delims=" %%I in ('powershell -NoProfile -Command "$x=Get-NetIPAddress -AddressFamily IPv4 ^| Where-Object {$_.IPAddress -notlike ''127.*'' -and $_.IPAddress -notlike ''169.254.*'' -and $_.PrefixOrigin -ne ''WellKnown''} ^| Select-Object -First 1 -ExpandProperty IPAddress; if($x){$x}"') do set "LAN_IP=%%I"
+set "KARAOKE_LAN_IP=%LAN_IP%"
+if not defined LAN_IP set "LAN_IP=127.0.0.1"
+if not defined KARAOKE_LAN_IP set "KARAOKE_LAN_IP=127.0.0.1"
+if not exist ".dev-certs" mkdir ".dev-certs"
+set "OLD_LAN_IP="
+if exist ".dev-certs\lan-ip.txt" set /p OLD_LAN_IP=<".dev-certs\lan-ip.txt"
+if not "%OLD_LAN_IP%"=="%LAN_IP%" (
+  del /q ".dev-certs\karaokeai.crt" ".dev-certs\karaokeai.key" >nul 2>&1
+  >".dev-certs\lan-ip.txt" echo %LAN_IP%
+) else (
+  if not exist ".dev-certs\lan-ip.txt" >".dev-certs\lan-ip.txt" echo %LAN_IP%
+)
+echo [OK] HTTPS LAN preparado em %LAN_IP%
+
 echo [3/5] Preparando containers...
 if "%CODE_CHANGED%"=="1" (
   echo Alteracoes detectadas: reconstruindo imagens...
@@ -90,9 +105,6 @@ if "%HEALTH_OK%"=="1" (
 
 echo.
 echo [5/5] Enderecos para teste...
-set "LAN_IP="
-for /f "delims=" %%I in ('powershell -NoProfile -Command "$x=Get-NetIPAddress -AddressFamily IPv4 ^| Where-Object {$_.IPAddress -notlike ''127.*'' -and $_.IPAddress -notlike ''169.254.*'' -and $_.PrefixOrigin -ne ''WellKnown''} ^| Select-Object -First 1 -ExpandProperty IPAddress; if($x){$x}"') do set "LAN_IP=%%I"
-
 echo.
 echo ========================================
 echo        KaraokeAI pronto para teste
@@ -104,9 +116,13 @@ echo.
 if defined LAN_IP (
   echo TV e celulares na mesma rede:
   echo   http://%LAN_IP%:5173
+  echo.
+  echo Microfone nos celulares/HTTPS:
+  echo   https://%LAN_IP%:5443
 ) else (
   echo TV e celulares:
   echo   http://IP_DO_PC:5173
+  echo   https://IP_DO_PC:5443
 )
 echo.
 echo Para diagnostico:
