@@ -13,7 +13,10 @@ RUN npm install
 RUN npm run build
 
 FROM nginx:1.29-alpine
+RUN apk add --no-cache openssl
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
+COPY apps/web/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
-EXPOSE 5173
-CMD ["nginx", "-g", "daemon off;"]
+EXPOSE 5173 5443
+ENTRYPOINT ["/entrypoint.sh"]
