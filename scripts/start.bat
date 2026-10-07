@@ -35,14 +35,16 @@ if errorlevel 1 (
 )
 echo.
 echo Servicos iniciados:
-echo   Web HTTP:      http://localhost:5173
+echo   Web HTTP local: http://localhost:5173
 echo   Web HTTPS:     https://localhost:5443
 echo   Signaling:     ws://localhost:8787
 echo   Media Worker:  interno via /media-worker
 echo.
-echo Na rede local:
-echo   HTTP:          http://%LAN_IP%:5173
+echo PC/Host e dispositivos da rede:
 echo   HTTPS:         https://%LAN_IP%:5443
+echo.
+echo IMPORTANTE: abra o Host pelo endereco HTTPS acima.
+echo O QR Code usa esse mesmo endereco da rede.
 echo.
 echo No celular, use o endereco HTTPS para liberar o microfone.
 echo O navegador podera pedir confirmacao para o certificado local na primeira vez.
