@@ -365,6 +365,51 @@ function injectHostSessionControls(transport: WebSocketTransport): void {
   }
 }
 
+export type ActiveSessionSummary = {
+  sessionId: string;
+  hostParticipantId: string;
+  hostName: string;
+  createdAt: number;
+  status: string;
+  participants: Array<{ id: string; name: string; role: 'host' | 'participant' | 'tv'; online: boolean }>;
+  queueSize: number;
+};
+
+export function discoverActiveSessions(url: string): Promise<ActiveSessionSummary[]> {
+  return new Promise((resolve) => {
+    const socket = new WebSocket(url);
+    let settled = false;
+    const finish = (sessions: ActiveSessionSummary[]) => {
+      if (settled) return;
+      settled = true;
+      try { socket.close(); } catch { /* ignore */ }
+      resolve(sessions);
+    };
+
+    socket.onopen = () => {
+      socket.send(JSON.stringify({
+        type: 'session.active.discover',
+        timestamp: Date.now()
+      }));
+    };
+    socket.onmessage = (event) => {
+      try {
+        const message = JSON.parse(String(event.data)) as RawMessage;
+        if (message.type === 'session.active.discovered') {
+          const payload = message.payload as { sessions?: ActiveSessionSummary[] } | undefined;
+          finish(Array.isArray(payload?.sessions) ? payload.sessions : []);
+        }
+      } catch {
+        finish([]);
+      }
+    };
+    socket.onerror = () => finish([]);
+    socket.onclose = () => {
+      if (!settled) finish([]);
+    };
+  });
+}
+
 export class WebSocketTransport {
   private socket: WebSocket | null = null;
   private intentionalClose = false;
