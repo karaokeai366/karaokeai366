@@ -3385,6 +3385,19 @@ export function App() {
               <span className="eyebrow">SALA CRIADA</span>
               <h2>Convide a galera</h2>
               <p className="muted">Mostre este QR Code na TV. Cada participante entra pelo próprio celular.</p>
+              {session && (
+                <div className="session-code-card" aria-label="Código da sessão">
+                  <span className="eyebrow">🔑 CÓDIGO DA SESSÃO</span>
+                  <strong>{session.sessionId.slice(-8).toUpperCase()}</strong>
+                  <button
+                    type="button"
+                    className="secondary session-code-copy"
+                    onClick={() => void navigator.clipboard?.writeText(session.sessionId.slice(-8).toUpperCase())}
+                  >
+                    📋 Copiar código
+                  </button>
+                </div>
+              )}
               <div className="tv-link-box">
                 <span>📺 Tela da TV</span>
                 <a href={tvJoinUrl} target="_blank" rel="noreferrer">Abrir palco nesta tela</a>
