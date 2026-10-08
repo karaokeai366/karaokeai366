@@ -628,3 +628,7 @@ canvas {
 
 
 .result-badge-ready { border-color: #2c5a49; color: #8be4b6; background: #12231d; }
+
+
+/* Persistent music library */
+.library-grid{display:grid;gap:12px;margin-top:14px}.library-song{display:grid;grid-template-columns:72px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px;border:1px solid var(--border,#26333d);border-radius:12px;background:rgba(255,255,255,.02)}.library-song img,.library-cover{width:72px;height:48px;object-fit:cover;border-radius:8px}.library-cover{display:grid;place-items:center;background:rgba(255,255,255,.05);font-size:24px}.library-song-info{min-width:0;display:grid;gap:3px}.library-song-info strong,.library-song-info small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.library-song-info small:last-child{color:#8be4b6}.library-song>.primary{white-space:nowrap}@media(max-width:620px){.library-song{grid-template-columns:56px minmax(0,1fr);}.library-song img,.library-cover{width:56px;height:42px}.library-song>.primary{grid-column:1/-1;width:100%}}
