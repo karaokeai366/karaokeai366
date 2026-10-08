@@ -3,7 +3,9 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import multiprocessing as mp
 import os
+import queue
 import re
 import shutil
 import subprocess
@@ -25,6 +27,10 @@ MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class PipelineError(RuntimeError):
+    pass
+
+
+class PreparationCancelled(PipelineError):
     pass
 
 
@@ -497,6 +503,94 @@ def separate_sources(
     return vocals_target, instrumental_target
 
 
+def _separation_process_worker(
+    normalized_audio: str,
+    folder: str,
+    progress_queue: Any,
+) -> None:
+    try:
+        def child_progress(stage: str, percent: int, message: str) -> None:
+            try:
+                progress_queue.put(("progress", stage, percent, message))
+            except Exception:
+                pass
+
+        vocals, instrumental = separate_sources(
+            Path(normalized_audio),
+            Path(folder),
+            progress=child_progress,
+        )
+        progress_queue.put(("done", str(vocals), str(instrumental)))
+    except Exception as exc:
+        progress_queue.put(("error", type(exc).__name__, str(exc)))
+
+
+def separate_sources_cancellable(
+    normalized_audio: Path,
+    folder: Path,
+    cancel_check: Callable[[], bool],
+    progress: Callable[[str, int, str], None] | None = None,
+) -> tuple[Path, Path]:
+    """Run the CPU-heavy separator in a child process so cancellation can terminate it."""
+    context = mp.get_context("spawn")
+    progress_queue = context.Queue()
+    process = context.Process(
+        target=_separation_process_worker,
+        args=(str(normalized_audio), str(folder), progress_queue),
+        daemon=True,
+    )
+    process.start()
+
+    result: tuple[Path, Path] | None = None
+    error: str | None = None
+
+    try:
+        while process.is_alive() or not progress_queue.empty():
+            if cancel_check():
+                if process.is_alive():
+                    process.terminate()
+                    process.join(timeout=5)
+                    if process.is_alive():
+                        process.kill()
+                        process.join(timeout=2)
+                raise PreparationCancelled("Preparação cancelada pelo usuário.")
+
+            try:
+                message = progress_queue.get(timeout=0.25)
+            except queue.Empty:
+                continue
+
+            kind = message[0]
+            if kind == "progress" and progress:
+                _, stage, percent, detail = message
+                progress(stage, int(percent), str(detail))
+            elif kind == "done":
+                _, vocals, instrumental = message
+                result = (Path(vocals), Path(instrumental))
+            elif kind == "error":
+                _, error_type, detail = message
+                error = f"{error_type}: {detail}"
+
+        process.join(timeout=2)
+
+        if cancel_check():
+            raise PreparationCancelled("Preparação cancelada pelo usuário.")
+        if error:
+            raise PipelineError(error)
+        if result is None:
+            raise PipelineError("O separador terminou sem produzir arquivos.")
+        return result
+    finally:
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=2)
+        try:
+            progress_queue.close()
+            progress_queue.join_thread()
+        except Exception:
+            pass
+
+
 def _key_profiles() -> tuple[list[str], list[list[float]]]:
     names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
     major = [
@@ -801,6 +895,7 @@ def prepare_asset(
     root: Path,
     separation_lock: Any | None = None,
     progress: Callable[[str, int, str], None] | None = None,
+    cancel_check: Callable[[], bool] | None = None,
 ) -> dict[str, Any]:
     folder = root / asset_id
     folder.mkdir(parents=True, exist_ok=True)
@@ -809,6 +904,9 @@ def prepare_asset(
     if not (source_url.startswith("https://") or source_url.startswith("http://")):
         raise PipelineError("A fonte deve ser uma URL HTTP(S).")
 
+    if cancel_check and cancel_check():
+        raise PreparationCancelled("Preparação cancelada pelo usuário.")
+
     report_progress(progress, "download", 5, "Conectando à fonte da música…")
 
     def download_progress(percent: float, detail: str) -> None:
@@ -816,6 +914,8 @@ def prepare_asset(
         report_progress(progress, "download", mapped, f"Baixando a música… {percent:.1f}%")
 
     original = download_source(source_url, folder, media_kind, download_progress)
+    if cancel_check and cancel_check():
+        raise PreparationCancelled("Preparação cancelada pelo usuário.")
     report_progress(progress, "download", 22, "Download concluído. Preparando o áudio…")
     report_progress(progress, "normalize", 25, "Normalizando o áudio…")
     normalized = folder / "mix.wav"
@@ -842,6 +942,9 @@ def prepare_asset(
         folder,
     )
 
+    if cancel_check and cancel_check():
+        raise PreparationCancelled("Preparação cancelada pelo usuário.")
+
     vocals: Path | None = None
     instrumental: Path | None = None
     melody_file: Path | None = None
@@ -863,19 +966,33 @@ def prepare_asset(
                 55,
                 "Separando voz e instrumental…",
             )
-            vocals, instrumental = separate_sources(
-                normalized,
-                folder,
-                progress=progress,
+            vocals, instrumental = (
+                separate_sources_cancellable(
+                    normalized,
+                    folder,
+                    cancel_check or (lambda: False),
+                    progress=progress,
+                )
+                if cancel_check is not None
+                else separate_sources(
+                    normalized,
+                    folder,
+                    progress=progress,
+                )
             )
     else:
         report_progress(progress, "separation", 55, "Separando voz e instrumental…")
         vocals, instrumental = separate_sources(normalized, folder)
     separation_state = "ready"
 
+    if cancel_check and cancel_check():
+        raise PreparationCancelled("Preparação cancelada pelo usuário.")
+
     report_progress(progress, "melody", 82, "Analisando melodia, tom e BPM…")
     melody_file = folder / "melody.json"
     melody_payload = analyze_melody(vocals, melody_file)
+    if cancel_check and cancel_check():
+        raise PreparationCancelled("Preparação cancelada pelo usuário.")
     melody_state = "ready"
 
     report_progress(progress, "manifest", 94, "Montando o SongAsset…")
