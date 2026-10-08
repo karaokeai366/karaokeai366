@@ -331,20 +331,33 @@ wss.on('connection', ws => {
         else applyQueueStatus(s, q, m.payload, c.participantId); break;
       }
       case 'queue.next': {
-        if (c.participantId !== s.hostId) return fail(ws, 'Somente o Host pode avançar a fila.');
+        if (!['host', 'participant', 'tv'].includes(c.role)) return fail(ws, 'Você não pode controlar a fila.');
         const q = nextSong(s); if (!q) return fail(ws, 'Não há música pronta para o próximo cantor.'); startSong(s, q); break;
       }
       case 'playback.control': {
-        if (c.participantId !== s.hostId) return fail(ws, 'Somente o Host pode controlar a reprodução.');
+        if (!['host', 'participant', 'tv'].includes(c.role)) return fail(ws, 'Você não pode controlar a reprodução.');
         const q = s.state.queue.find((x: any) => x.status === 'playing' && (!m.payload?.queueEntryId || x.id === m.payload.queueEntryId));
         if (!q && m.payload?.action !== 'end') return fail(ws, 'Não há música em reprodução.');
         const action = m.payload?.action;
-        if (action === 'pause') { const updated = { ...q, playbackState: 'paused', playbackPositionSeconds: Number(m.payload?.positionSeconds ?? q.playbackPositionSeconds ?? 0) }; s.state.queue = s.state.queue.map((x:any) => x.id === q.id ? updated : x); changed(s, 'performance.paused', { queueEntryId: q.id, playbackPositionSeconds: updated.playbackPositionSeconds }, c.participantId); }
+        if (action === 'pause') {
+          const requestedPosition = Number(m.payload?.positionSeconds);
+          const position = Number.isFinite(requestedPosition)
+            ? Math.max(0, requestedPosition)
+            : Math.max(0, Number(q.playbackPositionSeconds ?? 0));
+          const updated = { ...q, playbackState: 'paused', playbackPositionSeconds: position };
+          s.state.queue = s.state.queue.map((x:any) => x.id === q.id ? updated : x);
+          changed(s, 'performance.paused', { queueEntryId: q.id, playbackPositionSeconds: position }, c.participantId);
+        }
         else if (action === 'resume') {
           if (m.payload?.performanceId && String(m.payload.performanceId) !== String(q.activePerformanceId ?? '')) return fail(ws, 'A apresentação atual não corresponde ao performanceId informado.');
           const position = Math.max(0, Number(q.playbackPositionSeconds ?? 0));
-          const updated = { ...q, playbackState: 'playing', playbackStartedAt: Date.now() - position * 1000, hostDisconnectPause: undefined }; s.state.queue = s.state.queue.map((x:any) => x.id === q.id ? updated : x); changed(s, 'performance.resumed', { queueEntryId: q.id, playbackStartedAt: updated.playbackStartedAt }, c.participantId); }
-        else if (action === 'skip' || action === 'end') { finishSong(s, q ?? s.state.queue.find((x:any) => x.status === 'playing')); }
+          const updated = { ...q, playbackState: 'playing', playbackStartedAt: Date.now() - position * 1000, hostDisconnectPause: undefined };
+          s.state.queue = s.state.queue.map((x:any) => x.id === q.id ? updated : x);
+          changed(s, 'performance.resumed', { queueEntryId: q.id, playbackStartedAt: updated.playbackStartedAt }, c.participantId);
+        }
+        else if (action === 'skip' || action === 'end') {
+          finishSong(s, q ?? s.state.queue.find((x:any) => x.status === 'playing'));
+        }
         else return fail(ws, 'Ação de reprodução inválida.');
         break;
       }
@@ -568,35 +581,12 @@ wss.on('connection', ws => {
       s.state.pendingHostParticipantId = undefined;
 
       const playing = s.state.queue.find((x: any) => x.status === 'playing');
-      if (playing) {
-        const startedAt = Number(playing.playbackStartedAt ?? Date.now());
-        const elapsed = playing.playbackState === 'playing'
-          ? Math.max(0, (Date.now() - startedAt) / 1000)
-          : Number(playing.playbackPositionSeconds ?? 0);
-        const duration = Number(playing.durationSeconds);
-        const position = Number.isFinite(duration) && duration > 0
-          ? Math.min(elapsed, duration)
-          : elapsed;
-        const updated = {
-          ...playing,
-          playbackState: 'paused',
-          playbackPositionSeconds: position,
-          hostDisconnectPause: true,
-          hostPausedAt: Date.now()
-        };
-        s.state.queue = s.state.queue.map((x: any) => x.id === playing.id ? updated : x);
-        s.state.status = 'paused';
-        changed(s, 'performance.paused', {
-          queueEntryId: playing.id,
-          performanceId: playing.activePerformanceId,
-          playbackPositionSeconds: position,
-          reason: 'host_disconnected'
-        }, c.participantId);
-      }
-
+      // Playback is shared between Host, TV and participant phones. A Host
+      // disconnect must not pause the music while another controller remains
+      // connected to the session.
       for (const client of s.clients.values()) send(client.socket,'host.disconnected',{
         participantId:c.participantId,
-        performancePaused: Boolean(playing),
+        performancePaused: false,
         queueEntryId: playing?.id,
         performanceId: playing?.activePerformanceId
       });

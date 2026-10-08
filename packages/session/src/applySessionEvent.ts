@@ -86,6 +86,8 @@ export function applySessionEvent<T extends Record<string, any>>(
           ? {
               ...item,
               status: 'playing',
+              playbackState: 'playing',
+              playbackPositionSeconds: 0,
               ...(payload.playbackStartedAt ? { playbackStartedAt: payload.playbackStartedAt } : {}),
               ...(payload.performanceId ? { activePerformanceId: payload.performanceId } : {})
             }
