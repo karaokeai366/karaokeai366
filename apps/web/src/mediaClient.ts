@@ -17,6 +17,9 @@ interface WorkerSongSearchResult {
   duration_seconds?: number | null;
   thumbnail_url?: string | null;
   source_url: string;
+  prepared?: boolean;
+  asset_id?: string | null;
+  manifest_url?: string | null;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -59,7 +62,12 @@ export async function searchSongs(query: string, page = 1, pageSize = 15): Promi
     channelName: result.channel_name ?? undefined,
     durationSeconds: result.duration_seconds ?? undefined,
     thumbnailUrl: result.thumbnail_url ?? undefined,
-    sourceUrl: result.source_url
+    sourceUrl: result.source_url,
+    prepared: result.prepared,
+    assetId: result.asset_id ?? undefined,
+    manifestUrl: result.manifest_url
+      ? new URL(result.manifest_url, `${getMediaWorkerUrl()}/`).toString()
+      : undefined
   })) as SongSearchPage;
 
   results.page = response.page ?? page;
@@ -68,12 +76,21 @@ export async function searchSongs(query: string, page = 1, pageSize = 15): Promi
   return results;
 }
 
+export interface MediaLibraryInfo {
+  prepared: boolean;
+  assetId?: string;
+  manifestUrl?: string;
+}
+
 export interface MediaPrepareJob {
   jobId: string;
   status: 'queued' | 'running' | 'ready' | 'error' | 'cancelled';
   stage: string;
   progress: number;
   message: string;
+  prepared?: boolean;
+  assetId?: string;
+  manifestUrl?: string;
 }
 
 export interface MediaPrepareStatus extends MediaPrepareJob {
