@@ -2225,9 +2225,16 @@ function TvStage({
               )}
 
               {!playing && audioEnabled && <span className="tv-audio-ready">🔊 Áudio pronto</span>}
+              {!playing && (
+                <StagePlaybackControls
+                  session={session}
+                  participantId={participantId}
+                  transport={transport}
+                  compact
+                />
+              )}
             </div>
           )}
-        </div>
 
         <aside className="tv-queue">
           <div className="tv-queue-heading"><span className="eyebrow">FILA</span><strong>{upcoming.length}</strong></div>
@@ -3737,4 +3744,5 @@ export function App() {
     </main>
   );
 }
+
 
