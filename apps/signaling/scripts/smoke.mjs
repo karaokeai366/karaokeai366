@@ -359,26 +359,29 @@ try {
   }
   audioLoadHost.send('playback.control', { action: 'end', queueEntryId: audioQueueEntryId });
   await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.finished' && m.payload?.payload?.queueEntryId === audioQueueEntryId);
-  // Neste ponto o Target é o Host após a transferência voluntária acima.
+  // O Host pode cair durante a música sem interromper a apresentação:
+  // o controle é compartilhado entre TV e celulares.
   handoverTarget.ws.close();
+  const hostDisconnected = await handoverSinger.waitFor(m =>
+    m.type === 'host.disconnected' &&
+    m.payload?.participantId === 'smoke-handover-target'
+  );
+  if (hostDisconnected.payload.performancePaused !== false) throw new Error('Queda do Host não deve pausar a apresentação.');
+
+  // O cantor continua podendo controlar a reprodução mesmo sem o Host.
+  handoverSinger.send('playback.control', {
+    action: 'pause',
+    queueEntryId: disconnectQueueEntryId,
+    positionSeconds: 12
+  });
   const paused = await handoverSinger.waitFor(m =>
     m.type === 'session.event' &&
     m.payload?.type === 'performance.paused' &&
-    m.payload?.payload?.queueEntryId === disconnectQueueEntryId &&
-    m.payload?.payload?.reason === 'host_disconnected'
+    m.payload?.payload?.queueEntryId === disconnectQueueEntryId
   );
-  if (paused.payload.payload.performanceId !== disconnectPerformanceId) throw new Error('PerformanceId mudou ao pausar por queda do Host.');
-  if (!(Number(paused.payload.payload.playbackPositionSeconds) >= 0)) throw new Error('Posição inválida ao pausar por queda do Host.');
+  if (Number(paused.payload.payload.playbackPositionSeconds) !== 12) throw new Error('Posição inválida ao pausar após queda do Host.');
 
-  handoverSinger.send('host.claim');
-  await handoverSinger.waitFor(m => m.type === 'session.error' && String(m.payload?.message ?? '').includes('temporariamente desconectado'));
-
-  // O Host original retorna e a música continua pausada até ele mandar resume.
-  const reconnectHost = client('smoke-handover-target', handoverSessionId);
-  await reconnectHost.waitOpen;
-  reconnectHost.send('session.reconnect');
-  await reconnectHost.waitFor(m => m.type === 'session.reconnected');
-  reconnectHost.send('playback.control', {
+  handoverSinger.send('playback.control', {
     action: 'resume',
     queueEntryId: disconnectQueueEntryId,
     performanceId: disconnectPerformanceId
@@ -389,6 +392,12 @@ try {
     m.payload?.payload?.queueEntryId === disconnectQueueEntryId
   );
   if (resumed.payload.payload.playbackStartedAt <= 0) throw new Error('Resume sem playbackStartedAt válido.');
+
+  // O Host original retorna e recupera a identidade da sessão.
+  const reconnectHost = client('smoke-handover-target', handoverSessionId);
+  await reconnectHost.waitOpen;
+  reconnectHost.send('session.reconnect');
+  await reconnectHost.waitFor(m => m.type === 'session.reconnected');
   reconnectHost.ws.close();
 
   const lastParticipant = participants[47];
