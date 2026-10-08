@@ -328,6 +328,20 @@ function SearchResults({
   );
 }
 
+function TvConnectionStatus({ session }: { session: SessionState }) {
+  const tv = session.participants.find((participant) => participant.role === 'tv');
+
+  return (
+    <span
+      className={`tv-connection-status ${tv?.online ? 'online' : 'offline'}`}
+      title={tv?.online ? 'A TV está conectada a esta sessão.' : 'Nenhuma TV está conectada a esta sessão.'}
+    >
+      <span aria-hidden="true">{tv?.online ? '🟢' : '🔴'}</span>
+      TV {tv?.online ? 'conectada' : 'desconectada'}
+    </span>
+  );
+}
+
 function selectNextQueueEntry(
   session: SessionState,
   currentOwnerParticipantId?: string
@@ -3503,6 +3517,7 @@ export function App() {
             <div className="connection-line">
               <span className={`connection-badge ${connection}`}>{connection === 'online' ? '🟢 conectado' : connection === 'offline' ? '🔴 offline' : '🟡 conectando'}</span>
               <span>{countConnectedParticipants(session.participants)} participante(s) online</span>
+              <TvConnectionStatus session={session} />
               <span>· rodada {session.roundMode.kind === 'open' ? 'aberta' : session.roundMode.songCount + ' música(s)'}</span>
               {connection !== 'online' && (
                 <button type="button" className="link-button inline-reconnect" onClick={() => void reconnectCurrentSession()}>
@@ -3627,10 +3642,13 @@ export function App() {
       <header className="topbar">
         <div className="brand"><span className="brand-mark">🎤</span><div><strong>KaraokeAI</strong><small>host</small></div></div>
         {session && (
-          <div className="session-pill" title="Código da sessão">
-            <span className="status-dot" />
-            <span>SESSÃO {session.sessionId.slice(-8).toUpperCase()}</span>
-            <small>{connection === 'online' ? 'CONECTADO' : connection.toUpperCase()}</small>
+          <div className="session-header-group">
+            <div className="session-pill" title="Código da sessão">
+              <span className="status-dot" />
+              <span>SESSÃO {session.sessionId.slice(-8).toUpperCase()}</span>
+              <small>{connection === 'online' ? 'CONECTADO' : connection.toUpperCase()}</small>
+            </div>
+            <TvConnectionStatus session={session} />
           </div>
         )}
       </header>
