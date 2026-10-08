@@ -2935,7 +2935,10 @@ export function App() {
         source: result.source,
         sourceUrl: result.sourceUrl,
         thumbnailUrl: result.thumbnailUrl,
-        durationSeconds: result.durationSeconds
+        durationSeconds: result.durationSeconds,
+        prepared: result.prepared,
+        assetId: result.assetId,
+        manifestUrl: result.manifestUrl
       });
       setSearchResults((items) => items.filter((item) => item.sourceId !== result.sourceId));
     } catch (err) {
@@ -2984,7 +2987,15 @@ export function App() {
   }
 
   async function prepareQueueEntry(queueEntryId: string, entry: QueueEntry) {
-    if (!session || !transport || !currentParticipantId || !entry.sourceUrl || !entry.sourceId) return;
+    if (!session || !transport || !currentParticipantId) return;
+    if (entry.assetId && entry.manifestUrl) {
+      transport.sendRaw('queue.status.set', session.sessionId, currentParticipantId, {
+        queueEntryId, status: 'ready', assetId: entry.assetId, manifestUrl: entry.manifestUrl,
+        preparationStage: 'ready', preparationProgress: 100, preparationMessage: 'Música reutilizada da biblioteca.'
+      });
+      return;
+    }
+    if (!entry.sourceUrl || !entry.sourceId) return;
 
     try {
       transport.sendRaw('queue.status.set', session.sessionId, currentParticipantId, {
