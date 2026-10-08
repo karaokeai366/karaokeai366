@@ -418,6 +418,10 @@ export class WebSocketTransport {
     return this.sessionId;
   }
 
+  get currentSessionState(): SessionState | null {
+    return this.sessionState;
+  }
+
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       this.intentionalClose = false;
