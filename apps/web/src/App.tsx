@@ -2483,31 +2483,43 @@ export function App() {
 
   useEffect(() => {
     const tvDiscoveryRequested = (tvRouteRequested || isTelevisionBrowser()) && !initialJoin;
-    if (!tvDiscoveryRequested) return;
+    // Discovery belongs only to the TV lobby. Once the TV is connected, stop
+    // polling so the lobby does not keep refreshing/re-rendering underneath
+    // the connected TV session.
+    if (!tvDiscoveryRequested || view !== 'tv' || session) return;
 
     let cancelled = false;
+    let firstDiscovery = true;
+
     const discover = async () => {
-      setTvDiscovering(true);
-      setConnection('connecting');
-      setError('');
+      if (firstDiscovery) {
+        setTvDiscovering(true);
+        setConnection('connecting');
+        setError('');
+      }
+
       const sessions = await discoverActiveSessions(getSignalingUrl());
       if (cancelled) return;
+
       setTvSessions(sessions);
       setTvDiscovering(false);
-      setConnection('online');
-      if (tvSelectedSession) {
-        const stillActive = sessions.find((item) => item.sessionId === tvSelectedSession.sessionId);
-        if (stillActive) setTvSelectedSession(stillActive);
-      }
+      if (firstDiscovery) setConnection('online');
+      firstDiscovery = false;
+
+      setTvSelectedSession((current) => {
+        if (!current) return null;
+        return sessions.find((item) => item.sessionId === current.sessionId) ?? current;
+      });
     };
 
     void discover();
     const timer = window.setInterval(() => void discover(), 5000);
+
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [tvRouteRequested, initialJoin]);
+  }, [tvRouteRequested, initialJoin, view, session]);
 
   const joinParams = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
@@ -2659,7 +2671,23 @@ export function App() {
       }
 
       if (message.type === 'session.error') {
-        setError(String((message.payload as { message?: string })?.message ?? 'Erro ao conectar a TV.'));
+        const messageText = String(
+          (message.payload as { message?: string })?.message ?? 'Erro ao conectar a TV.'
+        );
+
+        // A saved TV identity can outlive the server-side participant. In that
+        // case reconnect cannot work; retry the same device identity through
+        // session.join so the server can recreate the TV participant.
+        if (sameStoredSession && messageText === 'Participante não encontrado.') {
+          socket.sendRaw('session.join', target.sessionId, participantId, {
+            name: 'TV',
+            role: 'tv',
+            capabilities: detectCapabilities()
+          });
+          return;
+        }
+
+        setError(messageText);
         setConnection('error');
       }
     });
@@ -3219,23 +3247,51 @@ export function App() {
             </div>
           )}
 
-          {tvSelectedSession && (
-            <button
-              className="primary full"
-              type="button"
-              disabled={connection === 'connecting'}
-              onClick={() => void connectTvToSession(tvSelectedSession)}
-            >
-              {connection === 'connecting' ? 'Conectando TV…' : 'Conectar TV à sessão ' + tvSelectedSession.sessionId.slice(-8).toUpperCase()}
-            </button>
-          )}
+          {tvSelectedSession && (() => {
+            const savedTvIdentity = getLocalIdentity();
+            const canReconnect =
+              savedTvIdentity?.role === 'tv'
+              && savedTvIdentity.sessionId === tvSelectedSession.sessionId;
+
+            return (
+              <>
+                <button
+                  className="primary full"
+                  type="button"
+                  disabled={connection === 'connecting'}
+                  onClick={() => void connectTvToSession(tvSelectedSession)}
+                >
+                  {connection === 'connecting'
+                    ? (canReconnect ? 'Reconectando TV…' : 'Conectando TV…')
+                    : (canReconnect
+                      ? '🔄 Reconectar TV à sessão ' + tvSelectedSession.sessionId.slice(-8).toUpperCase()
+                      : 'Conectar TV à sessão ' + tvSelectedSession.sessionId.slice(-8).toUpperCase())}
+                </button>
+
+                {canReconnect && (
+                  <button
+                    className="secondary full"
+                    type="button"
+                    style={{ marginTop: '0.75rem' }}
+                    disabled={connection === 'connecting'}
+                    onClick={() => {
+                      setError('');
+                      setConnection('connecting');
+                      void connectTvToSession(tvSelectedSession);
+                    }}
+                  >
+                    🔌 Tentar reconexão da TV
+                  </button>
+                )}
+              </>
+            );
+          })()}
 
           <button
             className="secondary full"
             type="button"
             style={{ marginTop: '0.75rem' }}
             onClick={() => {
-              setTvSelectedSession(null);
               setError('');
               setTvDiscovering(true);
               void discoverActiveSessions(getSignalingUrl()).then((sessions) => {
