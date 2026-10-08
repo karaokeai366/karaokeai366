@@ -1199,11 +1199,16 @@ function SingerMicrophone({
   }, [signals, participantId, tv?.id]);
 
   async function refreshTvPresence(): Promise<boolean> {
-    const hasOnlineTv = () => sessionRef.current.participants.some(
-      (participant) => participant.role === 'tv' && participant.online !== false
+    const hasOnlineTv = (state: SessionState | null) => Boolean(
+      state?.participants.some(
+        (participant) => participant.role === 'tv' && participant.online !== false
+      )
     );
 
-    if (hasOnlineTv()) return true;
+    if (hasOnlineTv(sessionRef.current) || hasOnlineTv(transport?.currentSessionState ?? null)) {
+      return true;
+    }
+
     if (!transport) return false;
 
     try {
@@ -1212,9 +1217,14 @@ function SingerMicrophone({
       return false;
     }
 
-    for (let attempt = 0; attempt < 8; attempt += 1) {
-      await new Promise((resolve) => window.setTimeout(resolve, 125));
-      if (hasOnlineTv()) return true;
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, 100));
+      if (
+        hasOnlineTv(sessionRef.current)
+        || hasOnlineTv(transport.currentSessionState)
+      ) {
+        return true;
+      }
     }
 
     return false;
