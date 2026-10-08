@@ -1,4 +1,4 @@
-import type { SongAssetManifest, SongSearchResult } from '../../../packages/media/src/song';
+import type { LibrarySong, SongAssetManifest, SongSearchResult } from '../../../packages/media/src/song';
 
 function getMediaWorkerUrl(): string {
   const configured = import.meta.env.VITE_MEDIA_WORKER_URL as string | undefined;
@@ -74,6 +74,16 @@ export async function searchSongs(query: string, page = 1, pageSize = 15): Promi
   results.pageSize = response.page_size ?? safePageSize;
   results.hasMore = Boolean(response.has_more);
   return results;
+}
+
+export async function getLibrarySongs(query = ''): Promise<LibrarySong[]> {
+  const params = new URLSearchParams();
+  if (query.trim()) params.set('q', query.trim());
+  const response = await request<{ results: LibrarySong[] }>(`/library${params.toString() ? `?${params.toString()}` : ''}`);
+  return response.results.map((song) => ({
+    ...song,
+    manifestUrl: new URL(song.manifestUrl, `${getMediaWorkerUrl()}/`).toString()
+  }));
 }
 
 export interface MediaLibraryInfo {
