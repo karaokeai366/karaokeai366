@@ -1484,7 +1484,7 @@ function TvStage({
   const [manifest, setManifest] = useState<import('../../../packages/media/src/song').SongAssetManifest | null>(null);
   const [lyricsLines, setLyricsLines] = useState<Array<{ start: number; text: string }>>([]);
   const [elapsed, setElapsed] = useState(0);
-  const [audioEnabled, setAudioEnabled] = useState(false);
+  const [audioEnabled, setAudioEnabled] = useState(true);
   const [audioError, setAudioError] = useState('');
   const [microphoneConnected, setMicrophoneConnected] = useState(false);
   const [musicVolume, setMusicVolume] = useState(90);
