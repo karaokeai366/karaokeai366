@@ -625,3 +625,6 @@ canvas {
     max-width: 100%;
   }
 }
+
+
+.result-badge-ready { border-color: #2c5a49; color: #8be4b6; background: #12231d; }
