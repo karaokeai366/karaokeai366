@@ -312,8 +312,10 @@ wss.on('connection', ws => {
           sourceUrl: String(m.payload?.sourceUrl ?? '').trim().slice(0, 1000) || undefined,
           thumbnailUrl: String(m.payload?.thumbnailUrl ?? '').trim().slice(0, 1000) || undefined,
           durationSeconds: Number.isFinite(m.payload?.durationSeconds) ? Number(m.payload.durationSeconds) : undefined,
+          assetId: String(m.payload?.assetId ?? '').trim().slice(0, 64) || undefined,
+          manifestUrl: String(m.payload?.manifestUrl ?? '').trim().slice(0, 1000) || undefined,
           requestedKey: String(m.payload?.requestedKey ?? '').trim().slice(0, 16) || undefined,
-          roundId: s.state.roundId, addedAt: Date.now(), status: 'queued' };
+          roundId: s.state.roundId, addedAt: Date.now(), status: m.payload?.prepared && m.payload?.assetId && m.payload?.manifestUrl ? 'ready' : 'queued' };
         s.state.queue.push(q); changed(s, 'queue.added', { entry: q }, c.participantId); break;
       }
       case 'queue.remove': {
