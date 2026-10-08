@@ -15,7 +15,7 @@ import {
   clearLocalIdentity
 } from './session';
 import { discoverActiveSessions, WebSocketTransport, type ActiveSessionSummary } from './wsTransport';
-import { cancelSongPreparation, getSongAssetManifest, getSongPreparationStatus, resolveSongAssetUrl, searchSongs, startSongPreparation, transposeSongKey } from './mediaClient';
+import { cancelSongPreparation, getSongAssetManifest, getLibrarySongs, getSongPreparationStatus, resolveSongAssetUrl, searchSongs, startSongPreparation, transposeSongKey, type LibrarySong } from './mediaClient';
 import type { SongSearchResult } from '../../../packages/media/src/song';
 import { getWebRtcConfiguration, isWebRtcSupported, type WebRtcSignal } from './webrtc';
 import { estimatePitch, pushPitchSample } from './pitchDetector';
@@ -218,6 +218,8 @@ function SearchResults({
   onAdd: (result: SongSearchResult) => void;
 }) {
   const [activeFilter, setActiveFilter] = useState('Todas');
+
+  useEffect(() => { void loadLibrary(); }, []);
 
   useEffect(() => {
     setActiveFilter('Todas');
@@ -2402,6 +2404,9 @@ export function App() {
   const [songTitle, setSongTitle] = useState('');
   const [songArtist, setSongArtist] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [librarySongs, setLibrarySongs] = useState<LibrarySong[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [libraryQuery, setLibraryQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SongSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchPerformed, setSearchPerformed] = useState(false);
@@ -2888,6 +2893,13 @@ export function App() {
     setView('participant');
     void reconnectCurrentSession(storedSession, storedIdentity.participantId);
   }, [initialJoin, session, storedSession, storedIdentity]);
+
+  async function loadLibrary(query = '') {
+    setLibraryLoading(true);
+    try { setLibrarySongs(await getLibrarySongs(query)); }
+    catch (error) { setError(error instanceof Error ? error.message : 'Não foi possível carregar a biblioteca.'); }
+    finally { setLibraryLoading(false); }
+  }
 
   async function searchMusic() {
     const query = searchQuery.trim();
@@ -3798,6 +3810,26 @@ export function App() {
           </div>
 
           <PerformanceGuestControls session={session!} participantId={currentParticipantId} transport={transport} />
+          <div className="panel library-panel">
+            <div className="panel-heading">
+              <div><span className="eyebrow">📚 BIBLIOTECA PERMANENTE</span><h3>Músicas preparadas</h3></div>
+              <span className="tag">INDEPENDENTE DA SESSÃO</span>
+            </div>
+            <p className="muted">As músicas preparadas ficam no servidor e podem ser reutilizadas em novas sessões sem repetir a separação.</p>
+            <div className="search-box">
+              <input value={libraryQuery} onChange={(e) => setLibraryQuery(e.target.value)} placeholder="🔎 Procurar na biblioteca" onKeyDown={(e) => e.key === 'Enter' && void loadLibrary(libraryQuery)} />
+              <button className="secondary" onClick={() => void loadLibrary(libraryQuery)} disabled={libraryLoading}>{libraryLoading ? 'Carregando…' : 'Buscar'}</button>
+            </div>
+            <div className="library-grid">
+              {librarySongs.map((song) => <div className="library-song" key={song.assetId}>
+                {song.thumbnailUrl ? <img src={song.thumbnailUrl} alt="" loading="lazy" /> : <div className="library-cover">🎤</div>}
+                <div className="library-song-info"><strong>{song.title}</strong><small>{song.artist || 'Artista não informado'}</small><small>🎤 Pronta</small></div>
+                <button type="button" className="primary" onClick={() => void addSearchResultToQueue({sourceId:song.sourceId || song.assetId,source:song.source || 'library',title:song.title,artist:song.artist,album:song.album,durationSeconds:song.durationSeconds,thumbnailUrl:song.thumbnailUrl,sourceUrl:song.sourceUrl || song.manifestUrl,prepared:true,assetId:song.assetId,manifestUrl:song.manifestUrl})}>Adicionar à fila</button>
+              </div>)}
+              {!libraryLoading && librarySongs.length === 0 && <div className="search-empty"><span>📚</span><div><strong>Biblioteca vazia</strong><small>Prepare uma música e ela aparecerá aqui para as próximas sessões.</small></div></div>}
+            </div>
+          </div>
+
           <div className="panel">
             <div className="panel-heading">
               <div><span className="eyebrow">FILA COMPARTILHADA</span><h3>Adicione a primeira música</h3></div>
