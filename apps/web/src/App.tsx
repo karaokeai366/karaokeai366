@@ -88,6 +88,16 @@ function semitoneLabel(semitones: number): string {
     : `Subir ${absolute} semitom${absolute === 1 ? '' : 's'}`;
 }
 
+const MUSICAL_KEY_NAMES: Record<string, string> = {
+  C: 'Dó', 'C#': 'Dó♯', D: 'Ré', 'D#': 'Ré♯', E: 'Mi', F: 'Fá', 'F#': 'Fá♯',
+  G: 'Sol', 'G#': 'Sol♯', A: 'Lá', 'A#': 'Lá♯', B: 'Si'
+};
+
+function musicalKeyName(value?: string): string {
+  const key = pitchClass(value);
+  return MUSICAL_KEY_NAMES[key] ?? key ?? 'Tom original';
+}
+
 
 function normalizeLyricForPattern(text: string): string {
   return text
@@ -1491,7 +1501,7 @@ function SingerMicrophone({
             </small>
           )}
           {playing && (playing.selectedKey || playing.originalKey) && (
-            <small>Tom atual: <strong>{pitchClass(playing.selectedKey ?? playing.originalKey)}</strong></small>
+            <small>Tom atual: <strong>{musicalKeyName(playing.selectedKey ?? playing.originalKey)}</strong> ({pitchClass(playing.selectedKey ?? playing.originalKey)})</small>
           )}
           {referenceNotesRef.current.length > 0 && <small>A avaliação será calculada ao finalizar a música.</small>}
           {playing?.durationSeconds && (
@@ -1540,8 +1550,8 @@ function SingerMicrophone({
         <div className="tone-suggestion">
           <div>
             <span className="eyebrow">🎼 TESTE DE TOM</span>
-            <strong>{semitoneLabel(toneSuggestion.semitones)}</strong>
-            <small>Sua voz está tendendo a ficar fora do tom atual. Quer testar {toneSuggestion.targetKey}?</small>
+            <strong>{musicalKeyName(pitchClass(playing.selectedKey ?? playing.originalKey))} → {musicalKeyName(toneSuggestion.targetKey)}</strong>
+            <small>💡 Sugestão automática: sua voz está tendendo a ficar fora do tom atual. Quer testar {musicalKeyName(toneSuggestion.targetKey)}?</small>
           </div>
 
           <div className="tone-actions">
@@ -1566,8 +1576,8 @@ function SingerMicrophone({
         <div className="tone-applied">
           <div>
             <span className="eyebrow">🎼 TOM EM TESTE</span>
-            <strong>Tom {appliedTone.key}</strong>
-            <small>Você veio de {appliedTone.from}. Confira como sua voz se sente neste tom.</small>
+            <strong>Tom {musicalKeyName(appliedTone.key)}</strong>
+            <small>Você veio de {musicalKeyName(appliedTone.from)}. Confira como sua voz se sente neste tom.</small>
           </div>
           <div className="tone-actions">
             <button
@@ -1575,7 +1585,7 @@ function SingerMicrophone({
               disabled={toneBusy}
               onClick={() => void applyTone(appliedTone.from)}
             >
-              ↩ Voltar para {appliedTone.from}
+              ↩ Voltar para {musicalKeyName(appliedTone.from)}
             </button>
             <button
               className="secondary"
@@ -1600,7 +1610,7 @@ function SingerMicrophone({
               disabled={toneBusy}
               onChange={(event) => setManualTone(event.target.value)}
             >
-              {MUSICAL_KEYS.map((key) => <option key={key} value={key}>{key}</option>)}
+              {MUSICAL_KEYS.map((key) => <option key={key} value={key}>{musicalKeyName(key)} ({key})</option>)}
             </select>
           </label>
           <button className="secondary" disabled={toneBusy || !manualTone} onClick={() => void applyTone(manualTone)}>
@@ -1608,7 +1618,7 @@ function SingerMicrophone({
           </button>
           {previousToneKeyRef.current && (
             <button className="secondary" disabled={toneBusy} onClick={() => void applyTone(previousToneKeyRef.current!)}>
-              ↩ Voltar para {previousToneKeyRef.current}
+              ↩ Voltar para {musicalKeyName(previousToneKeyRef.current)}
             </button>
           )}
         </div>
