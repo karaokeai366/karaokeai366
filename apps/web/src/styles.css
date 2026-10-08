@@ -431,3 +431,38 @@ button { border: 0; border-radius: 14px; min-height: 48px; padding: 0 18px; colo
   .stored-session-actions { justify-content: stretch; }
   .stored-session-actions button { flex: 1; }
 }
+
+.tv-connection-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+  padding: 0.28rem 0.55rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.045);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.tv-connection-status.online {
+  border-color: rgba(80, 220, 130, 0.28);
+}
+
+.tv-connection-status.offline {
+  border-color: rgba(255, 100, 100, 0.28);
+}
+
+.session-header-group {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+@media (max-width: 720px) {
+  .session-header-group {
+    justify-content: flex-start;
+  }
+}
