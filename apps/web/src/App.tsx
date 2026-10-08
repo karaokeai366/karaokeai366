@@ -2264,6 +2264,7 @@ function TvStage({
               )}
             </div>
           )}
+        </div>
 
         <aside className="tv-queue">
           <div className="tv-queue-heading"><span className="eyebrow">FILA</span><strong>{upcoming.length}</strong></div>
