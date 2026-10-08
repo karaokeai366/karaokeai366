@@ -57,7 +57,7 @@ def update_prepare_job(job_id: str, stage: str, percent: int, message: str) -> N
     job = prepare_jobs.get(job_id)
     if not job or job.get("status") == "cancelled":
         return
-    job.update({}
+    job.update({
         "status": "running",
         "stage": stage,
         "progress": percent,
