@@ -1212,6 +1212,12 @@ function SingerMicrophone({
       return;
     }
 
+    const currentTv = sessionRef.current.participants.find((participant) => participant.role === 'tv' && participant.online !== false);
+    if (!currentTv) {
+      setError('A TV não está conectada a esta sessão.');
+      return;
+    }
+
     if (!isWebRtcSupported()) {
       setSupported(false);
       setError(window.isSecureContext
