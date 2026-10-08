@@ -132,11 +132,9 @@ try {
 
   host.send('queue.next');
   await first.waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.started');
-  singer.send('playback.control', { action: 'pause', queueEntryId });
-  await singer.waitFor(m => m.type === 'session.error' && String(m.payload?.message ?? '').includes('Somente o Host'));
-  host.send('playback.control', { action: 'pause', queueEntryId, positionSeconds: 10 });
+  singer.send('playback.control', { action: 'pause', queueEntryId, positionSeconds: 10 });
   await first.waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.paused');
-  host.send('playback.control', { action: 'resume', queueEntryId });
+  singer.send('playback.control', { action: 'resume', queueEntryId });
   await first.waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.resumed');
   await tv.waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.started');
 
