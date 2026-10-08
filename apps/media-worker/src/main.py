@@ -475,6 +475,59 @@ def search(
     )
 
 
+@app.get("/library")
+def library(q: str = Query(default="", max_length=160), limit: int = Query(default=100, ge=1, le=500)) -> dict[str, Any]:
+    """List prepared SongAssets from persistent media storage, independent of sessions."""
+    normalized = q.strip().casefold()
+    songs: list[dict[str, Any]] = []
+    for manifest_path in ROOT.glob("*/manifest.json"):
+        asset_id = manifest_path.parent.name
+        manifest = cached_manifest(asset_id)
+        if manifest is None:
+            continue
+        source = manifest.get("source") or {}
+        haystack = " ".join(str(source.get(key) or "") for key in ("title", "artist", "album", "channelName")).casefold()
+        if normalized and normalized not in haystack:
+            continue
+        files = manifest.get("files") or {}
+        size_bytes = 0
+        for value in files.values():
+            if not value:
+                continue
+            try:
+                path = ROOT / asset_id / str(value)
+                if path.is_file():
+                    size_bytes += path.stat().st_size
+            except OSError:
+                pass
+        songs.append({
+            "assetId": asset_id,
+            "sourceId": source.get("sourceId"),
+            "source": source.get("source"),
+            "title": source.get("title") or "Sem título",
+            "artist": source.get("artist"),
+            "album": source.get("album"),
+            "channelName": source.get("channelName"),
+            "durationSeconds": manifest.get("durationSeconds") or source.get("durationSeconds"),
+            "thumbnailUrl": source.get("thumbnailUrl"),
+            "sourceUrl": source.get("sourceUrl"),
+            "mediaKind": manifest.get("mediaKind") or "video",
+            "createdAt": manifest.get("createdAt") or "",
+            "manifestUrl": f"/media/{asset_id}/manifest.json",
+            "sizeBytes": size_bytes,
+        })
+    songs.sort(key=lambda item: item.get("createdAt") or "", reverse=True)
+    return {"results": songs[:limit], "total": len(songs)}
+
+
+@app.get("/library/{asset_id}")
+def library_asset(asset_id: str) -> dict[str, Any]:
+    manifest = cached_manifest(safe_asset_id(asset_id) if asset_id else None)
+    if manifest is None or manifest.get("assetId") != asset_id:
+        raise HTTPException(status_code=404, detail="SongAsset não encontrado na biblioteca.")
+    return manifest
+
+
 @app.get("/lyrics", response_model=LyricsResponse)
 async def lyrics(
     track_name: str = Query(min_length=1, max_length=160),
