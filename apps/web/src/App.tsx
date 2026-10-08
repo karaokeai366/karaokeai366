@@ -1354,7 +1354,7 @@ function SingerMicrophone({
         dispatchWebRtcSignal(transport, session, participantId, {
           kind: 'ice-candidate',
           fromParticipantId: participantId,
-          targetParticipantId: tv.id,
+          targetParticipantId: currentTv.id,
           candidate: event.candidate.toJSON()
         });
       };
@@ -1370,7 +1370,7 @@ function SingerMicrophone({
       dispatchWebRtcSignal(transport, session, participantId, {
         kind: 'offer',
         fromParticipantId: participantId,
-        targetParticipantId: tv.id,
+        targetParticipantId: currentTv.id,
         sdp: peer.localDescription?.toJSON() ?? offer
       });
 
