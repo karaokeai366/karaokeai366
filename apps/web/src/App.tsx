@@ -289,8 +289,11 @@ function SearchResults({
               <span className="result-artist">
                 {result.artist ?? 'Artista não identificado'}
               </span>
-              {tags.length > 0 && (
+              {(tags.length > 0 || result.prepared) && (
                 <div className="result-badges">
+                  {result.prepared && (
+                    <span className="result-badge result-badge-ready">🎤 Pronta</span>
+                  )}
                   {tags.map((tag) => <span className="result-badge" key={tag}>{tag}</span>)}
                 </div>
               )}
