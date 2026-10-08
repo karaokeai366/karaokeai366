@@ -2483,41 +2483,37 @@ export function App() {
 
   useEffect(() => {
     const tvDiscoveryRequested = (tvRouteRequested || isTelevisionBrowser()) && !initialJoin;
-    // Discovery belongs only to the TV lobby. Once the TV is connected, stop
-    // polling so the lobby does not keep refreshing/re-rendering underneath
-    // the connected TV session.
+    // A TV lobby must not poll continuously. Repeated discovery made the
+    // screen look as if it were pressing "Atualizar sessões" forever.
+    // Discovery happens once when the lobby opens; the user can refresh
+    // explicitly, and connecting to a session stops discovery entirely.
     if (!tvDiscoveryRequested || view !== 'tv' || session) return;
 
     let cancelled = false;
-    let firstDiscovery = true;
+    setTvDiscovering(true);
+    setConnection('connecting');
+    setError('');
 
-    const discover = async () => {
-      if (firstDiscovery) {
-        setTvDiscovering(true);
-        setConnection('connecting');
-        setError('');
-      }
-
-      const sessions = await discoverActiveSessions(getSignalingUrl());
+    void discoverActiveSessions(getSignalingUrl()).then((sessions) => {
       if (cancelled) return;
 
       setTvSessions(sessions);
       setTvDiscovering(false);
-      if (firstDiscovery) setConnection('online');
-      firstDiscovery = false;
-
+      setConnection('online');
       setTvSelectedSession((current) => {
         if (!current) return null;
         return sessions.find((item) => item.sessionId === current.sessionId) ?? current;
       });
-    };
+    }).catch((reason) => {
+      if (cancelled) return;
 
-    void discover();
-    const timer = window.setInterval(() => void discover(), 5000);
+      setTvDiscovering(false);
+      setConnection('error');
+      setError(reason instanceof Error ? reason.message : 'Não foi possível procurar sessões na rede.');
+    });
 
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
     };
   }, [tvRouteRequested, initialJoin, view, session]);
 
@@ -3235,7 +3231,11 @@ export function App() {
                     type="button"
                     className={selected ? 'primary full' : 'secondary full'}
                     style={{ textAlign: 'left', padding: '1rem' }}
-                    onClick={() => setTvSelectedSession(item)}
+                    disabled={connection === 'connecting'}
+                    onClick={() => {
+                      setTvSelectedSession(item);
+                      void connectTvToSession(item);
+                    }}
                   >
                     <strong>{item.hostName}</strong>
                     <span style={{ display: 'block', marginTop: '0.25rem', opacity: 0.8 }}>
