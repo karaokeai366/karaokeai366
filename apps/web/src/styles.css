@@ -466,3 +466,162 @@ button { border: 0; border-radius: 14px; min-height: 48px; padding: 0 18px; colo
     justify-content: flex-start;
   }
 }
+
+
+/* Prevent horizontal clipping on narrow mobile viewports. */
+html {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.app-shell,
+.tv-stage,
+.tv-main,
+.tv-hero,
+.panel,
+.dashboard-main,
+.sidebar,
+.hero,
+.topbar,
+.tv-topbar {
+  min-width: 0;
+}
+
+.hero > *,
+.dashboard > *,
+.tv-main > *,
+.tv-hero > *,
+.panel > * {
+  min-width: 0;
+}
+
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+}
+
+@media (max-width: 620px) {
+  .app-shell {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .topbar {
+    gap: 8px;
+  }
+
+  .brand {
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .brand > div {
+    min-width: 0;
+  }
+
+  .brand strong,
+  .brand small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .panel {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .connection-line {
+    flex-wrap: wrap;
+  }
+
+  .search-result,
+  .queue-row,
+  .person-row {
+    min-width: 0;
+  }
+
+  .search-result > *,
+  .queue-row > *,
+  .person-row > * {
+    min-width: 0;
+  }
+
+  .tv-stage {
+    width: 100%;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .tv-topbar {
+    width: 100%;
+    gap: 8px;
+  }
+
+  .tv-brand {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .tv-main {
+    width: 100%;
+    margin-top: 16px;
+  }
+
+  .tv-hero {
+    width: 100%;
+    max-width: 100%;
+    padding: 18px;
+    border-radius: 22px;
+  }
+
+  .tv-copy,
+  .tv-copy h1,
+  .tv-copy h2 {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .tv-copy h1 {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .tv-result-card,
+  .tv-round-final,
+  .tv-round-progress {
+    width: 100%;
+    max-width: 100%;
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .session-code-card,
+  .tv-link-box {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .session-code-card strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .host-stage-controls,
+  .stage-control-actions,
+  .microphone-actions,
+  .queue-ready-controls {
+    width: 100%;
+    max-width: 100%;
+  }
+}
