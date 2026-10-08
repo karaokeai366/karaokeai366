@@ -990,8 +990,10 @@ function SingerMicrophone({
   const previousPerformanceIdRef = useRef<string | null>(null);
   const currentPlayingRef = useRef<QueueEntry | null>(playing);
   const microphoneLeaseRef = useRef(false);
+  const sessionRef = useRef(session);
 
   currentPlayingRef.current = playing;
+  sessionRef.current = session;
 
   const [active, setActive] = useState(false);
   const [error, setError] = useState('');
@@ -1177,9 +1179,36 @@ function SingerMicrophone({
     }
   }, [signals, participantId, tv?.id]);
 
+  async function refreshTvPresence(): Promise<boolean> {
+    const hasOnlineTv = () => sessionRef.current.participants.some(
+      (participant) => participant.role === 'tv' && participant.online !== false
+    );
+
+    if (hasOnlineTv()) return true;
+    if (!transport) return false;
+
+    try {
+      transport.sendRaw('session.state.request', sessionRef.current.sessionId, participantId, {});
+    } catch {
+      return false;
+    }
+
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, 125));
+      if (hasOnlineTv()) return true;
+    }
+
+    return false;
+  }
+
   async function start() {
-    if (!transport || !playing || playing.ownerParticipantId !== participantId || !tv) {
-      setError('Não há uma TV conectada a esta sessão.');
+    if (!transport || !playing || playing.ownerParticipantId !== participantId) {
+      setError('Não há uma apresentação sua pronta para iniciar.');
+      return;
+    }
+
+    if (!(await refreshTvPresence())) {
+      setError('A TV não está conectada a esta sessão. Conecte a TV antes de ativar o microfone.');
       return;
     }
 
@@ -3744,5 +3773,6 @@ export function App() {
     </main>
   );
 }
+
 
 
