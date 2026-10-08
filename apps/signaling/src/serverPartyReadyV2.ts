@@ -337,7 +337,7 @@ wss.on('connection', ws => {
       case 'playback.control': {
         if (!['host', 'participant', 'tv'].includes(c.role)) return fail(ws, 'Você não pode controlar a reprodução.');
         const q = s.state.queue.find((x: any) => x.status === 'playing' && (!m.payload?.queueEntryId || x.id === m.payload.queueEntryId));
-        if (!q && m.payload?.action !== 'end') return fail(ws, 'Não há música em reprodução.');
+        if (!q) return fail(ws, 'Não há música em reprodução.');
         const action = m.payload?.action;
         if (action === 'pause') {
           const requestedPosition = Number(m.payload?.positionSeconds);
