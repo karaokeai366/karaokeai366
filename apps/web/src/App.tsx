@@ -2587,6 +2587,13 @@ export function App() {
         if (incoming) {
           setSession(incoming);
           localStorage.setItem('karaokeai.session.v1', JSON.stringify(incoming));
+          if (participant.role === 'tv') {
+            setView('tv');
+          } else if (participant.role === 'participant') {
+            setView('participant');
+          } else if (participant.role === 'host') {
+            setView('host');
+          }
         }
         setConnection('online');
         clearReconnectSchedule();
@@ -2666,7 +2673,8 @@ export function App() {
       if (state === 'open') clearReconnectSchedule();
       if (state === 'close' && !intentional) {
         setConnection('offline');
-        setError('Conexão da TV perdida. Escolha a sessão novamente para reconectar.');
+        setError('Conexão da TV perdida. Reconectando automaticamente…');
+        scheduleReconnect(participantId);
       }
     });
 
@@ -2675,6 +2683,7 @@ export function App() {
         const incoming = (message.payload as { state?: SessionState })?.state;
         if (!incoming) return;
         setSession(incoming);
+        localStorage.setItem('karaokeai.session.v1', JSON.stringify(incoming));
         setCurrentParticipantId(participantId);
         setView('tv');
         saveLocalIdentity({
@@ -2881,7 +2890,7 @@ export function App() {
   useEffect(() => {
     if (initialJoin || session || !storedSession || !storedIdentity) return;
     if (storedIdentity.sessionId !== storedSession.sessionId) return;
-    if (storedIdentity.role === 'host' || storedIdentity.role === 'tv') return;
+    if (storedIdentity.role === 'host') return;
 
     const participant = storedSession.participants.find(
       (item) => item.id === storedIdentity.participantId
@@ -2890,9 +2899,27 @@ export function App() {
 
     setSession(storedSession);
     setCurrentParticipantId(storedIdentity.participantId);
-    setView('participant');
+    setView(storedIdentity.role === 'tv' ? 'tv' : 'participant');
     void reconnectCurrentSession(storedSession, storedIdentity.participantId);
   }, [initialJoin, session, storedSession, storedIdentity]);
+
+  useEffect(() => {
+    if (view !== 'tv' || !session || !currentParticipantId || !transport) return;
+
+    const requestSnapshot = () => {
+      try {
+        transport.sendRaw('session.state.request', session.sessionId, currentParticipantId, {});
+      } catch {
+        setConnection('offline');
+        setError('Conexão da TV perdida. Reconectando automaticamente…');
+        scheduleReconnect(currentParticipantId);
+      }
+    };
+
+    requestSnapshot();
+    const timer = window.setInterval(requestSnapshot, 5000);
+    return () => window.clearInterval(timer);
+  }, [view, session?.sessionId, currentParticipantId, transport]);
 
   async function loadLibrary(query = '') {
     setLibraryLoading(true);
