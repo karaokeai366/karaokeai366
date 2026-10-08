@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .pipeline import (
     PipelineError,
+    PreparationCancelled,
     SOURCE_SEPARATION_ENABLED,
     prepare_asset,
     yt_dlp_base_args,
@@ -46,6 +47,7 @@ app.mount("/media", StaticFiles(directory=str(ROOT)), name="media")
 
 type PrepareJob = dict[str, Any]
 prepare_jobs: dict[str, PrepareJob] = {}
+prepare_cancel_events: dict[str, threading.Event] = {}
 # Source separation is CPU/RAM intensive; serialize only this stage so
 # downloads, metadata and other lightweight preparation work can overlap.
 source_separation_lock = threading.Lock()
@@ -53,9 +55,9 @@ source_separation_lock = threading.Lock()
 
 def update_prepare_job(job_id: str, stage: str, percent: int, message: str) -> None:
     job = prepare_jobs.get(job_id)
-    if not job:
+    if not job or job.get("status") == "cancelled":
         return
-    job.update({
+    job.update({}
         "status": "running",
         "stage": stage,
         "progress": percent,
@@ -98,6 +100,7 @@ async def run_prepare_job(
     job_id: str,
     request: PrepareRequest,
     source: dict[str, Any],
+    cancel_event: threading.Event,
 ) -> None:
     try:
         prepare_jobs[job_id].update({"status": "running"})
@@ -132,6 +135,7 @@ async def run_prepare_job(
             media_kind=request.media_kind,
             root=ROOT,
             separation_lock=source_separation_lock,
+            cancel_check=cancel_event.is_set,
             progress=lambda stage, percent, message: update_prepare_job(
                 job_id, stage, percent, message
             ),
@@ -142,6 +146,13 @@ async def run_prepare_job(
             "progress": 100,
             "message": "Música pronta para cantar.",
             "manifest": manifest,
+            "updatedAt": asyncio.get_event_loop().time(),
+        })
+    except PreparationCancelled as exc:
+        prepare_jobs[job_id].update({
+            "status": "cancelled",
+            "stage": "cancelled",
+            "message": str(exc),
             "updatedAt": asyncio.get_event_loop().time(),
         })
     except PipelineError as exc:
@@ -158,7 +169,8 @@ async def run_prepare_job(
             "message": f"Falha na preparação da música: {exc}",
             "updatedAt": asyncio.get_event_loop().time(),
         })
-
+    finally:
+        prepare_cancel_events.pop(job_id, None)
 
 
 class SearchResult(BaseModel):
@@ -520,6 +532,7 @@ async def prepare(request: PrepareRequest) -> dict[str, Any]:
             }
 
     job_id = uuid4().hex
+    prepare_cancel_events[job_id] = threading.Event()
     prepare_jobs[job_id] = {
         "jobId": job_id,
         "status": "queued",
@@ -531,7 +544,14 @@ async def prepare(request: PrepareRequest) -> dict[str, Any]:
         "cacheKey": cache_key,
     }
 
-    asyncio.create_task(run_prepare_job(job_id, request, source))
+    asyncio.create_task(
+        run_prepare_job(
+            job_id,
+            request,
+            source,
+            prepare_cancel_events[job_id],
+        )
+    )
 
     return {
         "jobId": job_id,
@@ -539,6 +559,43 @@ async def prepare(request: PrepareRequest) -> dict[str, Any]:
         "stage": "queued",
         "progress": 0,
         "message": "Preparação iniciada.",
+    }
+
+
+@app.post("/prepare/{job_id}/cancel")
+async def cancel_prepare(job_id: str) -> dict[str, Any]:
+    job = prepare_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job de preparação não encontrado.")
+
+    status = str(job.get("status") or "")
+    if status in {"ready", "error", "cancelled"}:
+        return {
+            "jobId": job_id,
+            "status": status,
+            "stage": job.get("stage", status),
+            "progress": job.get("progress", 0),
+            "message": job.get("message", "Job já finalizado."),
+        }
+
+    cancel_event = prepare_cancel_events.get(job_id)
+    if cancel_event is None:
+        raise HTTPException(status_code=409, detail="Job não pode mais ser cancelado.")
+
+    cancel_event.set()
+    job.update({
+        "status": "cancelled",
+        "stage": "cancelled",
+        "message": "Cancelando processamento da música…",
+        "updatedAt": asyncio.get_event_loop().time(),
+    })
+
+    return {
+        "jobId": job_id,
+        "status": "cancelled",
+        "stage": "cancelled",
+        "progress": job.get("progress", 0),
+        "message": "Processamento cancelado.",
     }
 
 
