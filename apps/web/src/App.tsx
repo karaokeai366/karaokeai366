@@ -15,7 +15,7 @@ import {
   clearLocalIdentity
 } from './session';
 import { discoverActiveSessions, WebSocketTransport, type ActiveSessionSummary } from './wsTransport';
-import { getSongAssetManifest, getSongPreparationStatus, resolveSongAssetUrl, searchSongs, startSongPreparation, transposeSongKey } from './mediaClient';
+import { cancelSongPreparation, getSongAssetManifest, getSongPreparationStatus, resolveSongAssetUrl, searchSongs, startSongPreparation, transposeSongKey } from './mediaClient';
 import type { SongSearchResult } from '../../../packages/media/src/song';
 import { getWebRtcConfiguration, isWebRtcSupported, type WebRtcSignal } from './webrtc';
 import { estimatePitch, pushPitchSample } from './pitchDetector';
@@ -2219,6 +2219,8 @@ export function App() {
   const reconnectInFlightRef = useRef(false);
   const reconnectTimerRef = useRef<number | null>(null);
   const reconnectAttemptRef = useRef(0);
+  const preparationJobsRef = useRef(new Map<string, string>());
+  const cancelledPreparationsRef = useRef(new Set<string>());
   const [songTitle, setSongTitle] = useState('');
   const [songArtist, setSongArtist] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -2739,8 +2741,21 @@ export function App() {
     }
   }
 
-  function removeQueueEntry(queueEntryId: string) {
+  async function removeQueueEntry(queueEntryId: string) {
     if (!session || !transport || !currentParticipantId) return;
+
+    cancelledPreparationsRef.current.add(queueEntryId);
+    const jobId = preparationJobsRef.current.get(queueEntryId);
+    preparationJobsRef.current.delete(queueEntryId);
+
+    if (jobId) {
+      try {
+        await cancelSongPreparation(jobId);
+      } catch {
+        // A fila ainda será removida mesmo se o worker já tiver finalizado o job.
+      }
+    }
+
     try {
       transport.sendRaw('queue.remove', session.sessionId, currentParticipantId, {
         queueEntryId
@@ -2768,6 +2783,14 @@ export function App() {
         thumbnailUrl: entry.thumbnailUrl
       }, 'audio');
 
+      preparationJobsRef.current.set(queueEntryId, job.jobId);
+
+      if (cancelledPreparationsRef.current.has(queueEntryId)) {
+        await cancelSongPreparation(job.jobId).catch(() => undefined);
+        preparationJobsRef.current.delete(queueEntryId);
+        return;
+      }
+
       let finished = false;
       while (!finished) {
         const status = await getSongPreparationStatus(job.jobId);
@@ -2788,6 +2811,10 @@ export function App() {
         if (status.status === 'ready') {
           finished = true;
           continue;
+        }
+
+        if (status.status === 'cancelled') {
+          return;
         }
 
         if (status.status === 'error') {
@@ -2816,6 +2843,9 @@ export function App() {
         // Preserve the original media worker error.
       }
       setError(message);
+    } finally {
+      preparationJobsRef.current.delete(queueEntryId);
+      cancelledPreparationsRef.current.delete(queueEntryId);
     }
   }
 
