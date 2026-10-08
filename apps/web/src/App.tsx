@@ -845,6 +845,117 @@ function QueueList({
   );
 }
 
+function StagePlaybackControls({
+  session,
+  participantId,
+  transport,
+  compact = false
+}: {
+  session: SessionState;
+  participantId: string;
+  transport: WebSocketTransport | null;
+  compact?: boolean;
+}) {
+  const playing = session.queue.find((entry) => entry.status === 'playing') ?? null;
+  const nextEntry = selectNextQueueEntry(session, playing?.ownerParticipantId);
+  const currentParticipant = session.participants.find((participant) => participant.id === participantId);
+  const canControl = Boolean(
+    transport
+    && currentParticipant
+    && currentParticipant.online !== false
+    && ['host', 'participant', 'tv'].includes(currentParticipant.role)
+  );
+  const [busy, setBusy] = useState(false);
+
+  function sendControl(action: 'pause' | 'resume' | 'skip' | 'end') {
+    if (!transport || !canControl) return;
+    if (action === 'end' && !window.confirm('Encerrar a apresentação agora?')) return;
+
+    const current = session.queue.find((entry) => entry.status === 'playing');
+    if (action !== 'end' && !current) return;
+
+    transport.sendRaw('playback.control', session.sessionId, participantId, {
+      action,
+      ...(current ? { queueEntryId: current.id } : {}),
+      ...(current?.activePerformanceId ? { performanceId: current.activePerformanceId } : {}),
+      ...(action === 'pause' && current ? { positionSeconds: playbackElapsedSeconds(current) } : {})
+    });
+  }
+
+  async function startNext() {
+    if (!transport || !canControl || busy || playing || !nextEntry || nextEntry.status !== 'ready') return;
+    setBusy(true);
+    try {
+      transport.sendRaw('queue.next', session.sessionId, participantId, {});
+    } catch (error) {
+      // Keep the control usable even if the socket closes between render and click.
+      console.error(error);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!canControl) return null;
+
+  return (
+    <div className={`panel stage-control-panel ${compact ? 'stage-control-compact' : ''}`}>
+      <div className="panel-heading">
+        <div>
+          <span className="eyebrow">🎛️ CONTROLE DO PALCO</span>
+          <h3>{playing ? playing.title : 'Próxima música'}</h3>
+        </div>
+        <span className="tag">
+          {playing
+            ? (playing.playbackState === 'paused' ? 'PAUSADA' : 'AO VIVO')
+            : nextEntry?.status === 'ready' ? 'PRONTA' : 'AGUARDANDO'}
+        </span>
+      </div>
+
+      <div className="stage-control-actions">
+        {playing ? (
+          <>
+            {playing.playbackState === 'paused' ? (
+              <button className="primary" type="button" onClick={() => sendControl('resume')}>
+                ▶ Retomar
+              </button>
+            ) : (
+              <button className="secondary" type="button" onClick={() => sendControl('pause')}>
+                ⏸ Pausar
+              </button>
+            )}
+            <button className="secondary danger-button" type="button" onClick={() => sendControl('skip')}>
+              ⏭ Pular
+            </button>
+            <button className="secondary danger-button" type="button" onClick={() => sendControl('end')}>
+              🛑 Encerrar
+            </button>
+          </>
+        ) : (
+          <button
+            className="primary"
+            type="button"
+            disabled={busy || session.status === 'finished' || nextEntry?.status !== 'ready'}
+            onClick={() => void startNext()}
+          >
+            {busy ? 'Iniciando…' : nextEntry?.status === 'ready' ? '▶ Dar Play / Iniciar próxima' : '⏳ Aguardando música pronta'}
+          </button>
+        )}
+      </div>
+
+      {!playing && nextEntry && (
+        <p className="muted small-note">
+          Próxima: <strong>{nextEntry.title}</strong> · {session.participants.find((p) => p.id === nextEntry.ownerParticipantId)?.name ?? 'Participante'}.
+        </p>
+      )}
+      {playing && (
+        <p className="muted small-note">
+          Este controle é compartilhado: PC, celulares participantes e TV podem pausar, retomar, pular ou encerrar.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function SingerMicrophone({
   session,
   participantId,
@@ -2028,6 +2139,13 @@ function TvStage({
                   )}
                 </div>
 
+                <StagePlaybackControls
+                  session={session}
+                  participantId={participantId}
+                  transport={transport}
+                  compact
+                />
+
                 {audioEnabled && (
                   <div className="tv-mixer">
                     <label>
@@ -2485,6 +2603,7 @@ export function App() {
         if (!incoming) return;
         setSession(incoming);
         setCurrentParticipantId(participantId);
+        setView('tv');
         saveLocalIdentity({
           sessionId: target.sessionId,
           participantId,
@@ -2512,6 +2631,9 @@ export function App() {
           ? { role: 'tv' }
           : { name: 'TV', role: 'tv', capabilities: detectCapabilities() }
       );
+      // Request a fresh authoritative snapshot after joining. This avoids
+      // showing the lobby state when the TV connects after a song has started.
+      socket.sendRaw('session.state.request', target.sessionId, participantId, {});
       setTransport(socket);
     } catch (err) {
       socket.disconnect();
@@ -2951,7 +3073,7 @@ export function App() {
   }
 
   function startNextSong(): boolean {
-    if (!session || !transport || session.hostParticipantId !== currentParticipantId) return false;
+    if (!session || !transport || !currentParticipantId) return false;
     if (session.queue.some((entry) => entry.status === 'playing')) return false;
     if (!session.queue.some((entry) => entry.status === 'ready')) return false;
 
@@ -2965,7 +3087,7 @@ export function App() {
   }
 
   function controlPlayback(action: 'pause' | 'resume' | 'skip' | 'end') {
-    if (!session || !transport || session.hostParticipantId !== currentParticipantId) return;
+    if (!session || !transport || !currentParticipantId) return;
 
     const current = session.queue.find((entry) => entry.status === 'playing');
     if (action !== 'end' && !current) return;
@@ -2975,7 +3097,8 @@ export function App() {
     transport.sendRaw('playback.control', session.sessionId, currentParticipantId, {
       action,
       ...(current ? { queueEntryId: current.id } : {}),
-      ...(current?.activePerformanceId ? { performanceId: current.activePerformanceId } : {})
+      ...(current?.activePerformanceId ? { performanceId: current.activePerformanceId } : {}),
+      ...(action === 'pause' && current ? { positionSeconds: playbackElapsedSeconds(current) } : {})
     });
   }
 
@@ -3328,6 +3451,11 @@ export function App() {
             signals={webrtcSignals}
             onChangeKey={changeSongKey}
           />
+          <StagePlaybackControls
+            session={session}
+            participantId={currentParticipantId}
+            transport={transport}
+          />
           <PerformanceGuestMicrophone session={session} participantId={currentParticipantId} transport={transport} signals={webrtcSignals} />
           <div className="panel">
             <div className="panel-heading">
@@ -3471,55 +3599,11 @@ export function App() {
             ) : null;
           })()}
           {session && (
-            <div className="panel stage-control-panel">
-              <div className="panel-heading">
-                <div>
-                  <span className="eyebrow">🎛️ CONTROLE DO PALCO</span>
-                  <h3>Apresentação</h3>
-                </div>
-                <span className="tag">
-                  {session.status === 'finished'
-                    ? 'ENCERRADA'
-                    : session.queue.some((entry) => entry.status === 'playing')
-                      ? (session.queue.find((entry) => entry.status === 'playing')?.playbackState === 'paused' ? 'PAUSADA' : 'AO VIVO')
-                      : 'AGUARDANDO'}
-                </span>
-              </div>
-              <div className="stage-control-actions">
-                {session.queue.some((entry) => entry.status === 'playing') ? (
-                  <>
-                    {session.queue.find((entry) => entry.status === 'playing')?.playbackState === 'paused' ? (
-                      <button className="primary" type="button" onClick={() => controlPlayback('resume')}>
-                        ▶ Retomar
-                      </button>
-                    ) : (
-                      <button className="secondary" type="button" onClick={() => controlPlayback('pause')}>
-                        ⏸ Pausar
-                      </button>
-                    )}
-                    <button className="secondary danger-button" type="button" onClick={() => controlPlayback('skip')}>
-                      ⏭ Pular
-                    </button>
-                    <button className="secondary danger-button" type="button" onClick={() => controlPlayback('end')}>
-                      🛑 Encerrar
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    className="primary"
-                    type="button"
-                    disabled={session.status === 'finished'}
-                    onClick={() => startNextSong()}
-                  >
-                    ▶ Iniciar próxima música
-                  </button>
-                )}
-              </div>
-              <p className="muted small-note">
-                A fila automática prioriza quem fez menos músicas na rodada e evita repetir o último cantor quando houver outro elegível.
-                Pausar preserva a posição. Pular cancela a tentativa sem gerar nota. Encerrar fecha a apresentação atual.
-              </p>
-            </div>
+            <StagePlaybackControls
+              session={session}
+              participantId={currentParticipantId}
+              transport={transport}
+            />
           )}
           {session && (
             <div className="panel auto-advance-panel">
@@ -3653,3 +3737,4 @@ export function App() {
     </main>
   );
 }
+
