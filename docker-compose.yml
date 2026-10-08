@@ -34,7 +34,7 @@ services:
       KARAOKE_MEDIA_ROOT: /app/data/media
       AUDIO_SEPARATOR_MODEL_DIR: /app/data/models
       KARAOKE_ENABLE_SOURCE_SEPARATION: "true"
-      KARAOKE_SEPARATOR_MODE: quality
+      KARAOKE_SEPARATOR_MODE: fast
     ports:
       - "8790:8790"
     volumes:
