@@ -178,6 +178,9 @@ class SearchResult(BaseModel):
     source: str
     title: str
     artist: str | None = None
+    prepared: bool = False
+    asset_id: str | None = None
+    manifest_url: str | None = None
     album: str | None = None
     channel_name: str | None = None
     duration_seconds: float | None = None
@@ -429,10 +432,24 @@ def search(
             artist = enriched_artist
             album = album or enriched_album
 
+        source_id_text = str(source_id)
+        cache_key = source_id_text
+        asset_id = hashlib.sha256(
+            f"video:{cache_key}".encode("utf-8")
+        ).hexdigest()[:32]
+        cached = cached_manifest(asset_id)
+
         results.append(
             SearchResult(
-                source_id=str(source_id),
+                source_id=source_id_text,
                 source="youtube-music" if using_music_catalog else "youtube",
+                prepared=cached is not None,
+                asset_id=asset_id if cached is not None else None,
+                manifest_url=(
+                    f"/media/{asset_id}/manifest.json"
+                    if cached is not None
+                    else None
+                ),
                 title=title,
                 artist=artist,
                 album=album,
