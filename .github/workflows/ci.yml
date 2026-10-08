@@ -36,6 +36,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export KARAOKE_SESSION_STORE=/tmp/karaokeai-sessions.json
           node dist/serverPartyReadyV2.js > /tmp/karaokeai-signaling.log 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid" 2>/dev/null || true; cat /tmp/karaokeai-signaling.log' EXIT
