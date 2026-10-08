@@ -10,6 +10,9 @@ export interface SongSearchResult {
   durationSeconds?: number;
   thumbnailUrl?: string;
   sourceUrl: string;
+  prepared?: boolean;
+  assetId?: string;
+  manifestUrl?: string;
 }
 
 export interface LyricsResult {
