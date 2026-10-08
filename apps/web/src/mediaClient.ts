@@ -1,5 +1,7 @@
 import type { LibrarySong, SongAssetManifest, SongSearchResult } from '../../../packages/media/src/song';
 
+export type { LibrarySong };
+
 function getMediaWorkerUrl(): string {
   const configured = import.meta.env.VITE_MEDIA_WORKER_URL as string | undefined;
   if (configured) return configured.replace(/\/$/, '');
