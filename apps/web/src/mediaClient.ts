@@ -70,7 +70,7 @@ export async function searchSongs(query: string, page = 1, pageSize = 15): Promi
 
 export interface MediaPrepareJob {
   jobId: string;
-  status: 'queued' | 'running' | 'ready' | 'error';
+  status: 'queued' | 'running' | 'ready' | 'error' | 'cancelled';
   stage: string;
   progress: number;
   message: string;
@@ -96,6 +96,12 @@ export async function startSongPreparation(source: SongSearchResult, mediaKind: 
       channel_name: source.channelName,
       thumbnail_url: source.thumbnailUrl
     })
+  });
+}
+
+export async function cancelSongPreparation(jobId: string): Promise<MediaPrepareJob> {
+  return request<MediaPrepareJob>(`/prepare/${encodeURIComponent(jobId)}/cancel`, {
+    method: 'POST'
   });
 }
 
