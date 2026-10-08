@@ -219,8 +219,6 @@ function SearchResults({
 }) {
   const [activeFilter, setActiveFilter] = useState('Todas');
 
-  useEffect(() => { void loadLibrary(); }, []);
-
   useEffect(() => {
     setActiveFilter('Todas');
   }, [results]);
@@ -2597,13 +2595,7 @@ export function App() {
         if (incoming) {
           setSession(incoming);
           localStorage.setItem('karaokeai.session.v1', JSON.stringify(incoming));
-          if (participant.role === 'tv') {
-            setView('tv');
-          } else if (participant.role === 'participant') {
-            setView('participant');
-          } else if (participant.role === 'host') {
-            setView('host');
-          }
+          setView('host');
         }
         setConnection('online');
         clearReconnectSchedule();
@@ -2863,6 +2855,13 @@ export function App() {
         if (incoming) {
           setSession(incoming);
           localStorage.setItem('karaokeai.session.v1', JSON.stringify(incoming));
+          if (participant.role === 'tv') {
+            setView('tv');
+          } else if (participant.role === 'participant') {
+            setView('participant');
+          } else if (participant.role === 'host') {
+            setView('host');
+          }
         }
         setConnection('online');
         clearReconnectSchedule();
