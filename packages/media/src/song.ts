@@ -15,6 +15,23 @@ export interface SongSearchResult {
   manifestUrl?: string;
 }
 
+export interface LibrarySong {
+  assetId: string;
+  sourceId?: string;
+  source?: string;
+  title: string;
+  artist?: string;
+  album?: string;
+  channelName?: string;
+  durationSeconds?: number;
+  thumbnailUrl?: string;
+  sourceUrl?: string;
+  mediaKind: MediaKind;
+  createdAt: string;
+  manifestUrl: string;
+  sizeBytes?: number;
+}
+
 export interface LyricsResult {
   provider: string;
   trackName: string;
