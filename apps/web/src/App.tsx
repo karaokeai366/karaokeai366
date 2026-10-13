@@ -70,7 +70,7 @@ function pitchClass(value?: string): string {
 
 function keyLabel(value?: string): string {
   const key = pitchClass(value);
-  return key ? `Tom ${key}` : 'Tom original';
+  return key ? `Tom ${musicalKeyName(key)}` : 'Tom original';
 }
 
 function shiftMusicalKey(value: string | undefined, semitones: number): string | null {
@@ -89,13 +89,28 @@ function semitoneLabel(semitones: number): string {
 }
 
 const MUSICAL_KEY_NAMES: Record<string, string> = {
-  C: 'Dó', 'C#': 'Dó♯', D: 'Ré', 'D#': 'Ré♯', E: 'Mi', F: 'Fá', 'F#': 'Fá♯',
-  G: 'Sol', 'G#': 'Sol♯', A: 'Lá', 'A#': 'Lá♯', B: 'Si'
+  C: 'Dó',
+  'C#': 'Dó sustenido',
+  Db: 'Ré bemol',
+  D: 'Ré',
+  'D#': 'Ré sustenido',
+  Eb: 'Mi bemol',
+  E: 'Mi',
+  F: 'Fá',
+  'F#': 'Fá sustenido',
+  Gb: 'Sol bemol',
+  G: 'Sol',
+  'G#': 'Sol sustenido',
+  Ab: 'Lá bemol',
+  A: 'Lá',
+  'A#': 'Lá sustenido',
+  Bb: 'Si bemol',
+  B: 'Si'
 };
 
 function musicalKeyName(value?: string): string {
   const key = pitchClass(value);
-  return MUSICAL_KEY_NAMES[key] ?? key ?? 'Tom original';
+  return key ? (MUSICAL_KEY_NAMES[key] ?? key) : 'Tom original';
 }
 
 
@@ -844,11 +859,11 @@ function QueueList({
                     >
                       <option value="" disabled>Escolher tom</option>
                       {entry.originalKey && (
-                        <option value={pitchClass(entry.originalKey)}>{pitchClass(entry.originalKey)} (original)</option>
+                        <option value={pitchClass(entry.originalKey)}>{musicalKeyName(entry.originalKey)} (original)</option>
                       )}
                       {MUSICAL_KEYS
                         .filter((key) => key !== pitchClass(entry.originalKey))
-                        .map((key) => <option key={key} value={key}>{key}</option>)}
+                        .map((key) => <option key={key} value={key}>{musicalKeyName(key)}</option>)}
                     </select>
                   </label>
                 )}
@@ -1501,7 +1516,7 @@ function SingerMicrophone({
             </small>
           )}
           {playing && (playing.selectedKey || playing.originalKey) && (
-            <small>Tom atual: <strong>{musicalKeyName(playing.selectedKey ?? playing.originalKey)}</strong> ({pitchClass(playing.selectedKey ?? playing.originalKey)})</small>
+            <small>Tom atual: <strong>{musicalKeyName(playing.selectedKey ?? playing.originalKey)}</strong></small>
           )}
           {referenceNotesRef.current.length > 0 && <small>A avaliação será calculada ao finalizar a música.</small>}
           {playing?.durationSeconds && (
@@ -1556,7 +1571,7 @@ function SingerMicrophone({
 
           <div className="tone-actions">
             <button className="primary" onClick={() => void applyTone(toneSuggestion.targetKey)} disabled={toneBusy}>
-              {toneBusy ? 'Ajustando…' : `Testar ${toneSuggestion.targetKey}`}
+              {toneBusy ? 'Ajustando…' : `Testar ${musicalKeyName(toneSuggestion.targetKey)}`}
             </button>
             <button className="secondary" onClick={() => setToneSuggestion(null)} disabled={toneBusy}>
               Manter
@@ -1610,7 +1625,7 @@ function SingerMicrophone({
               disabled={toneBusy}
               onChange={(event) => setManualTone(event.target.value)}
             >
-              {MUSICAL_KEYS.map((key) => <option key={key} value={key}>{musicalKeyName(key)} ({key})</option>)}
+              {MUSICAL_KEYS.map((key) => <option key={key} value={key}>{musicalKeyName(key)}</option>)}
             </select>
           </label>
           <button className="secondary" disabled={toneBusy || !manualTone} onClick={() => void applyTone(manualTone)}>
@@ -3147,7 +3162,7 @@ export function App() {
         status: 'preparing',
         preparationStage: 'key',
         preparationProgress: 60,
-        preparationMessage: `Testando tom ${targetKey}…`,
+        preparationMessage: `Testando tom ${musicalKeyName(targetKey)}…`,
         attemptCancelReason: 'key-test'
       });
 
@@ -3163,8 +3178,8 @@ export function App() {
         preparationStage: 'ready',
         preparationProgress: 100,
         preparationMessage: restartPlayback
-          ? `Novo teste iniciado no tom ${prepared.selectedKey ?? targetKey}.`
-          : `Tom alterado para ${prepared.selectedKey ?? targetKey}.`,
+          ? `Novo teste iniciado no tom ${musicalKeyName(prepared.selectedKey ?? targetKey)}.`
+          : `Tom alterado para ${musicalKeyName(prepared.selectedKey ?? targetKey)}.`,
         ...(restartPlayback ? { playbackStartedAt: Date.now() } : {})
       });
 
