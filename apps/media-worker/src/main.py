@@ -28,6 +28,7 @@ from .pipeline import (
     youtube_cookie_file,
 )
 from .key_transposer import transpose_asset_key
+from .asset_identity import song_asset_id
 from pydantic import BaseModel, Field
 
 APP_VERSION = "0.1.0"
@@ -111,9 +112,7 @@ async def run_prepare_job(
         asset_id = (
             safe_asset_id(request.asset_id)
             if request.asset_id
-            else hashlib.sha256(
-                f"{request.media_kind}:{cache_key}".encode("utf-8")
-            ).hexdigest()[:32]
+            else song_asset_id(request.media_kind, request.source_id, request.source_url)
         )
 
         cached = cached_manifest(asset_id)
@@ -434,9 +433,9 @@ def search(
 
         source_id_text = str(source_id)
         cache_key = source_id_text
-        asset_id = hashlib.sha256(
-            f"video:{cache_key}".encode("utf-8")
-        ).hexdigest()[:32]
+        # Queue preparation currently requests audio-only SongAssets.
+        # Use the same identity here so search can recognize prepared assets.
+        asset_id = song_asset_id("audio", source_id_text, str(source_url))
         cached = cached_manifest(asset_id)
 
         results.append(
@@ -587,7 +586,7 @@ async def prepare(request: PrepareRequest) -> dict[str, Any]:
         "sourceUrl": request.source_url.strip(),
     }
 
-    cache_key = request.source_id or request.source_url.strip()
+    cache_key = f"{request.media_kind}:{request.source_id or request.source_url.strip()}"
     for existing_job in prepare_jobs.values():
         if (
             existing_job.get("status") in {"queued", "running"}
