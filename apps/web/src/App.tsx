@@ -110,7 +110,7 @@ const MUSICAL_KEY_NAMES: Record<string, string> = {
 
 function musicalKeyName(value?: string): string {
   const key = pitchClass(value);
-  return MUSICAL_KEY_NAMES[key] ?? key ?? 'Tom original';
+  return key ? (MUSICAL_KEY_NAMES[key] ?? key) : 'Tom original';
 }
 
 
