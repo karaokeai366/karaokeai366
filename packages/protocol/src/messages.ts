@@ -7,15 +7,20 @@ export type MessageType =
   | 'session.reconnected'
   | 'session.state'
   | 'session.state.request'
+  | 'session.state.set'
   | 'session.event'
   | 'session.error'
+  | 'session.active.discover'
+  | 'session.active.discovered'
+  | 'session.tv.discover'
+  | 'session.tv.discovered'
+  | 'session.tv.discovery.empty'
   | 'participant.joined'
   | 'participant.left'
   | 'host.disconnected'
   | 'host.claim'
   | 'host.transfer'
   | 'session.command'
-  | 'session.state.set'
   | 'session.settings.set'
   | 'queue.add'
   | 'queue.remove'
@@ -24,6 +29,9 @@ export type MessageType =
   | 'queue.restart'
   | 'playback.finished'
   | 'playback.control'
+  | 'performance.participant.add'
+  | 'performance.participant.remove'
+  | 'performance.audio.state'
   | 'performance.complete'
   | 'round.configure';
 
@@ -38,6 +46,23 @@ export interface Envelope<TPayload = unknown> {
 
 export interface SessionCreateRequest { maxParticipants?: number; }
 export interface SessionSettingsSetRequest { autoAdvance?: boolean; maxParticipants?: number; }
+export interface SessionActiveDiscoverRequest {}
+export interface SessionTvDiscoverRequest {}
+export interface SessionActiveDiscoveredResponse {
+  sessions: Array<{
+    sessionId: string;
+    hostParticipantId: string;
+    hostName: string;
+    createdAt: number;
+    status: string;
+    participants: Array<{ id: string; name: string; role: string; online: boolean }>;
+    queueSize: number;
+  }>;
+}
+export interface SessionTvDiscoveredResponse {
+  sessionId: string;
+  hostParticipantId: string;
+}
 export interface QueueAddRequest { title: string; artist?: string; sourceId?: string; source?: string; sourceUrl?: string; thumbnailUrl?: string; requestedKey?: string; durationSeconds?: number; }
 export interface QueueRemoveRequest { queueEntryId: string; }
 export interface QueueStatusSetRequest {
@@ -59,6 +84,21 @@ export interface PlaybackControlRequest { queueEntryId?: string; action: 'pause'
 export interface RoundConfigureRequest { mode: { kind: 'songs'; songCount: number } | { kind: 'open' }; }
 export interface RestartRequest { queueEntryId: string; performanceId: string; progressPercent: number; }
 export interface HostTransferRequest { targetParticipantId: string; }
+export interface PerformanceParticipantAddRequest {
+  queueEntryId: string;
+  performanceId: string;
+  participantId: string;
+}
+export interface PerformanceParticipantRemoveRequest {
+  queueEntryId: string;
+  performanceId: string;
+  participantId: string;
+}
+export interface PerformanceAudioStateRequest {
+  queueEntryId: string;
+  performanceId: string;
+  audioEnabled: boolean;
+}
 export interface PerformanceCompleteRequest {
   queueEntryId: string;
   performanceId: string;
