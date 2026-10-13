@@ -556,6 +556,15 @@ wss.on('connection', ws => {
         if (!isWebRtc && !isPerformanceAudio) return fail(ws,'Comando de sessão inválido.');
 
         if (isPerformanceAudio) {
+          const signalKinds = new Set(['offer', 'answer', 'ice-candidate']);
+          const kind = command.slice('performance.audio.'.length);
+          if (!signalKinds.has(kind) || data?.kind !== kind) {
+            return fail(ws, 'Tipo de sinalização de áudio inválido.');
+          }
+          if (String(data?.fromParticipantId ?? '') !== c.participantId) {
+            return fail(ws, 'A origem da sinalização de áudio não corresponde ao participante conectado.');
+          }
+
           const q = s.state.queue.find((x:any) => x.status === 'playing');
           if (!q) return fail(ws, 'Não há apresentação ativa para sinalização de áudio.');
           if (String(data?.queueEntryId ?? '') !== String(q.id)) {
@@ -579,9 +588,32 @@ wss.on('connection', ws => {
           break;
         }
 
+        const signalKinds = new Set(['offer', 'answer', 'ice-candidate']);
+        const kind = command.slice('webrtc.'.length);
+        if (!signalKinds.has(kind) || data?.kind !== kind) {
+          return fail(ws, 'Tipo de sinalização WebRTC inválido.');
+        }
+        if (String(data?.fromParticipantId ?? '') !== c.participantId) {
+          return fail(ws, 'A origem da sinalização não corresponde ao participante conectado.');
+        }
+
+        const playing = s.state.queue.find((x:any) => x.status === 'playing');
+        if (!playing) return fail(ws, 'Não há apresentação ativa para sinalização WebRTC.');
+        const singerId = String(playing.ownerParticipantId ?? '');
         const target = String(data?.targetParticipantId ?? '');
         const recipient = s.clients.get(target);
-        if (recipient) send(recipient.socket,'session.command',m.payload);
+        const senderIsSinger = c.participantId === singerId;
+        const senderIsTv = c.role === 'tv';
+        const targetIsSinger = target === singerId;
+        const targetIsTv = recipient?.role === 'tv';
+        if ((!senderIsSinger && !senderIsTv) ||
+            (senderIsSinger && !targetIsTv) ||
+            (senderIsTv && !targetIsSinger) ||
+            !recipient) {
+          return fail(ws, 'A sinalização WebRTC só é permitida entre o cantor principal e a TV conectada.');
+        }
+
+        send(recipient.socket, 'session.command', m.payload);
         break;
       }
       default: return fail(ws, `Comando não suportado: ${String(m.type ?? '')}`);

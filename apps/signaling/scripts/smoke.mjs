@@ -254,6 +254,23 @@ try {
   handoverGuest.send('session.command', {
     command: 'performance.audio.offer',
     data: {
+      kind: 'offer',
+      fromParticipantId: 'smoke-handover-target',
+      targetParticipantId: 'smoke-handover-target',
+      queueEntryId: disconnectQueueEntryId,
+      performanceId: disconnectPerformanceId
+    }
+  });
+  await handoverGuest.waitFor(m =>
+    m.type === 'session.error' &&
+    String(m.payload?.message ?? '').includes('origem da sinalização de áudio')
+  );
+
+  handoverGuest.send('session.command', {
+    command: 'performance.audio.offer',
+    data: {
+      kind: 'offer',
+      fromParticipantId: handoverGuest.senderId,
       targetParticipantId: 'smoke-handover-target',
       queueEntryId: disconnectQueueEntryId,
       performanceId: disconnectPerformanceId
@@ -264,11 +281,43 @@ try {
     m.payload?.command === 'performance.audio.offer'
   );
 
+  // A sinalização WebRTC comum só pode circular entre o cantor principal e a TV,
+  // e a identidade de origem deve corresponder ao socket autenticado.
+  handoverGuest.send('session.command', {
+    command: 'webrtc.offer',
+    data: {
+      kind: 'offer',
+      fromParticipantId: 'smoke-handover-target',
+      targetParticipantId: 'smoke-handover-tv',
+      sdp: { type: 'offer', sdp: 'spoofed-offer' }
+    }
+  });
+  await handoverGuest.waitFor(m =>
+    m.type === 'session.error' &&
+    String(m.payload?.message ?? '').includes('origem da sinalização')
+  );
+
+  handoverSinger.send('session.command', {
+    command: 'webrtc.offer',
+    data: {
+      kind: 'offer',
+      fromParticipantId: handoverSinger.senderId,
+      targetParticipantId: handoverTv.senderId,
+      sdp: { type: 'offer', sdp: 'smoke-offer' }
+    }
+  });
+  await handoverTv.waitFor(m =>
+    m.type === 'session.command' &&
+    m.payload?.command === 'webrtc.offer' &&
+    m.payload?.data?.targetParticipantId === handoverTv.senderId
+  );
+
   // Valida a ida e volta da sinalização WebRTC: oferta, resposta e ICE.
   handoverTarget.send('session.command', {
     command: 'performance.audio.answer',
     data: {
-      fromParticipantId: 'smoke-handover-target',
+      kind: 'answer',
+      fromParticipantId: handoverTarget.senderId,
       targetParticipantId: 'smoke-handover-guest',
       queueEntryId: disconnectQueueEntryId,
       performanceId: disconnectPerformanceId,
@@ -284,7 +333,8 @@ try {
   handoverGuest.send('session.command', {
     command: 'performance.audio.ice-candidate',
     data: {
-      fromParticipantId: 'smoke-handover-guest',
+      kind: 'ice-candidate',
+      fromParticipantId: handoverGuest.senderId,
       targetParticipantId: 'smoke-handover-target',
       queueEntryId: disconnectQueueEntryId,
       performanceId: disconnectPerformanceId,
@@ -300,7 +350,8 @@ try {
   handoverTarget.send('session.command', {
     command: 'performance.audio.ice-candidate',
     data: {
-      fromParticipantId: 'smoke-handover-target',
+      kind: 'ice-candidate',
+      fromParticipantId: handoverTarget.senderId,
       targetParticipantId: 'smoke-handover-guest',
       queueEntryId: disconnectQueueEntryId,
       performanceId: disconnectPerformanceId,
