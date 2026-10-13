@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import difflib
-import hashlib
 import json
 import os
 import re
@@ -108,7 +107,6 @@ async def run_prepare_job(
 
         # Reuse the same asset for repeated requests of the same source.
         # This turns a previously prepared song into an immediate cache hit.
-        cache_key = request.source_id or request.source_url.strip()
         asset_id = (
             safe_asset_id(request.asset_id)
             if request.asset_id
@@ -432,7 +430,6 @@ def search(
             album = album or enriched_album
 
         source_id_text = str(source_id)
-        cache_key = source_id_text
         # Queue preparation currently requests audio-only SongAssets.
         # Use the same identity here so search can recognize prepared assets.
         asset_id = song_asset_id("audio", source_id_text, str(source_url))
