@@ -2600,7 +2600,7 @@ export function App() {
     });
 
     socket.subscribe((message) => {
-      if (message.type === 'session.created' || message.type === 'session.state') {
+      if (message.type === 'session.created' || message.type === 'session.reconnected' || message.type === 'session.state') {
         const incoming = (message.payload as { state?: SessionState })?.state;
         if (incoming) {
           setSession(incoming);
@@ -2783,7 +2783,7 @@ export function App() {
     });
 
     socket.subscribe((message) => {
-      if (message.type === 'session.joined' || message.type === 'session.state') {
+      if (message.type === 'session.joined' || message.type === 'session.reconnected' || message.type === 'session.state') {
         const incoming = (message.payload as { state?: SessionState })?.state;
         if (incoming) {
           setSession(incoming);
