@@ -588,7 +588,11 @@ wss.on('connection', ws => {
     }
   });
   ws.on('close', () => {
-    const c = sockets.get(ws); if (!c) return; sockets.delete(ws); const s = sessions.get(c.sessionId); if (!s) return; const p = person(s,c.participantId); if (p) p.online = false; s.clients.delete(c.participantId);
+    const c = sockets.get(ws); if (!c) return; sockets.delete(ws); const s = sessions.get(c.sessionId); if (!s) return;
+    // Uma conexão antiga pode fechar depois que a reconexão já registrou o novo socket.
+    // Nesse caso, não remova nem marque offline a conexão que acabou de assumir a identidade.
+    if (s.clients.get(c.participantId)?.socket !== ws) return;
+    const p = person(s,c.participantId); if (p) p.online = false; s.clients.delete(c.participantId);
     if (c.participantId === s.hostId) {
       s.hostDisconnectedAt = Date.now();
       s.state.pendingHostParticipantId = undefined;
