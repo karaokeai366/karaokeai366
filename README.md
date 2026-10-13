@@ -1,322 +1,83 @@
 # KaraokeAI 🎤
 
-KaraokeAI is a distributed, local-first karaoke platform designed to run first as a **React + TypeScript + Vite/PWA client** on phones and Smart TVs. The same `apps/web` application currently provides the Host, participant and TV roles; native Android/iOS wrappers remain future targets.
+Plataforma de karaokê local para usar o computador como Host, uma TV como palco e celulares como participantes. O projeto está em desenvolvimento; o CI valida compilação e testes automatizados, mas isso não substitui os testes com aparelhos reais.
 
-The core idea is simple: **the Host coordinates the party, the TV is the visual stage, and participant phones contribute microphone capture and media processing when needed.**
+## O que já existe
 
-## Current implementation status
+- Aplicação Web/PWA única com modos de Host, participante e TV.
+- Criação e entrada em sessão por link/QR Code, com sincronização de participantes e estado.
+- Sinalização em tempo real, reconexão e recuperação do estado da sessão.
+- Fila compartilhada de músicas, controle de reprodução e organização do próximo cantor.
+- Serviço de preparação de mídia, com download/processamento e separação de voz e instrumental.
+- Biblioteca permanente de músicas preparadas, independente da sessão, armazenada em volume Docker.
+- Exibição dos nomes das notas musicais em português (Dó, Ré, Mi, Fá, Sol, Lá e Si).
+- Verificações automáticas de compilação e smoke test do signaling.
 
-The repository currently has one runnable frontend application: `apps/web`. It can operate as **Host, participant, or TV** through the same PWA codebase. `apps/mobile` and `apps/tv` are architectural targets, not separate runnable applications yet.
+**Importante:** nem tudo que foi planejado está concluído ou validado em aparelhos reais. A interface nativa separada para Android/iOS/TV não existe: os dispositivos usam a mesma aplicação Web/PWA. Compatibilidade de navegadores de TV, áudio/WebRTC, cancelamento durante processamento e desempenho devem continuar sendo testados no ambiente real.
 
-The party signaling server, shared protocol and web client are aligned around the same session model. CI now checks compilation plus an end-to-end signaling smoke test covering host creation, participant/TV join, queue insertion, preparation, singer selection, performance start/finish and scoring.
+## Executar os serviços no Windows
 
-Real-device validation is still a separate stage: browser permissions, WebRTC behavior, TV playback, media assets, Wi-Fi conditions and 1/10/20/30/50-device load must be exercised on actual hardware before production use.
+A forma recomendada para o ambiente de teste é usar o Docker Compose. Não é necessário iniciar três serviços manualmente no VS Code.
 
-## Server ↔ Web parity
+### 1. Pré-requisitos
 
-| Capability | Signaling | Web/PWA |
-|---|---:|---:|
-| Create/join/reconnect session | ✅ | ✅ |
-| Snapshot synchronization/recovery | ✅ | ✅ |
-| Ordered incremental `session.event` | ✅ | ✅ |
-| Sequence-gap recovery | ✅ | ✅ |
-| Participant join/leave/update | ✅ | ✅ |
-| Capacity 1–50, default 50 | ✅ | ✅ state + commands |
-| TV excluded from participant capacity | ✅ | ✅ |
-| Host transfer | ✅ | ✅ command facade + state |
-| Host recovery/claim | ✅ | ✅ command facade + state |
-| Shared queue | ✅ | ✅ |
-| Per-participant queue limit | ✅ default 3 | ✅ server-enforced + state |
-| Queue add/remove/update | ✅ | ✅ |
-| Deterministic fair next singer | ✅ | ✅ local state consumption; server remains authoritative |
-| Automatic queue advancement | ✅ | ✅ state consumption |
-| Song preparation progress | ✅ | ✅ |
-| Original/selected key | ✅ | ✅ |
-| Playback pause/resume/skip/end | ✅ | ✅ command facade + state |
-| Performance start/pause/resume/end | ✅ | ✅ event reducer/state |
-| Restart before 50% with credits | ✅ | ✅ policy/UI foundation |
-| Performance scoring | ✅ | ✅ scoring engine + submission |
-| Round modes (`open` / fixed songs) | ✅ | ✅ state + command facade |
-| Round completion | ✅ | ✅ state consumption |
-| WebRTC microphone foundation | ✅ signaling | ✅ browser foundation |
-| Pitch detection/scoring | — | ✅ |
-| Automatic key suggestion | — | ✅ |
-| TV visual-stage role | ✅ | ✅ same web app |
+- Git.
+- Docker Desktop instalado e em execução.
+- `mkcert` instalado para gerar o certificado HTTPS local.
 
-## Party-scale rules
+Clone o repositório e entre na pasta do projeto. Na primeira execução, abra o PowerShell **na raiz do repositório** e gere o certificado para o IP atual do computador:
 
-- Default active-participant capacity: **50**.
-- Configurable capacity: **1–50**.
-- TV clients do not consume participant slots.
-- Offline participants keep their identity but do not consume an active slot.
-- Default queue limit: **3 active songs per participant**.
-- The server chooses the next singer using deterministic fairness rules rather than a two-device assumption.
-- Queue membership does **not** create an audio stream.
-- Only the current singer needs the real-time microphone/media path.
-- Incremental `session.event` messages carry an ordered sequence number.
-- A client that detects a sequence gap requests a full snapshot for recovery.
-- Legacy full snapshots remain enabled during migration for safe compatibility.
-
-## Protocol
-
-Client commands include:
-
-```text
-session.create
-session.join
-session.reconnect
-session.state.request
-session.settings.set
-host.claim
-host.transfer
-queue.add
-queue.remove
-queue.status.set
-queue.next
-queue.restart
-playback.finished
-playback.control
-performance.complete
-round.configure
+```powershell
+.\scripts\setup-local-https.ps1
 ```
 
-Server-side incremental events include:
+Se o IP da rede não for detectado automaticamente, informe-o explicitamente:
 
-```text
-participant.joined
-participant.left
-participant.updated
-host.changed
-queue.added
-queue.updated
-queue.removed
-queue.next
-singer.called
-performance.started
-performance.paused
-performance.resumed
-performance.finished
-performance.scored
-round.updated
-session.settings.changed
+```powershell
+.\scripts\setup-local-https.ps1 -LanIp 192.168.1.100
 ```
 
-## Architecture
+Substitua o exemplo pelo IP real do PC. Para usar microfone no celular, abra a aplicação pelo HTTPS. Celulares e TVs podem exigir que a autoridade certificadora local do `mkcert` seja instalada/confiada no próprio dispositivo.
 
-```text
-                         KARAOKE PARTY
-                              │
-                 ┌────────────┴────────────┐
-                 │                         │
-              SIGNALING                  TV/PWA
-                 │                         │
-        session + queue + events      visual stage
-                 │
-      ┌──────────┼──────────┐
-      │          │          │
-   phone #1   phone #2   phone #N ... phone #50
-      │          │          │
-   control    control    control
-   + mic      + mic      + mic
-      │          │          │
-      └──────────┴──────────┘
-                 │
-        current singer only
-                 │
-              WebRTC
-                 │
-             audio out
+### 2. Iniciar ou atualizar
+
+Na raiz do repositório, execute:
+
+```bat
+scripts\update.bat
 ```
 
-### Snapshot + event model
+Esse comando atualiza o código da branch `main`, prepara/inicia os containers e mostra o estado dos serviços. Para apenas iniciar a stack sem atualizar o código, use `scripts\start.bat`.
 
-```text
-new connection / recovery
-          │
-          ▼
-   session.state snapshot
-          │
-          ▼
- ordered session.event #1
-          │
-          ▼
- ordered session.event #2
-          │
-          ▼
- ordered session.event #N
+### 3. Endereços
 
-if a sequence gap is detected:
-          │
-          ▼
-   request session.state
-```
+Use o IP LAN do computador no lugar de `IP_DO_PC` quando acessar de outro dispositivo.
 
-This avoids sending a complete session snapshot for every queue or performance change while retaining a reliable recovery path.
+| Serviço | Endereço/porta | Uso |
+|---|---|---|
+| Web local HTTP | `http://localhost:5173` | Diagnóstico no PC |
+| Web HTTPS | `https://IP_DO_PC:5443` | Host, celular e TV; preferido para liberar o microfone |
+| Signaling | `8787` | Comunicação das sessões; iniciado pelo Docker |
+| Media Worker | `8790` | Preparação de mídia e endpoint de saúde; iniciado pelo Docker |
 
-## Repository layout
+Abra o Host pelo endereço HTTPS. O QR Code deve levar os celulares/TV ao endereço HTTPS do PC. Os dispositivos precisam conseguir se comunicar pela rede local; isolamento de clientes Wi-Fi ou regras de firewall podem impedir a conexão.
 
-```text
-/
-├── apps/
-│   ├── web/                 # current runnable PWA: Host / participant / TV
-│   ├── signaling/           # party WebSocket server
-│   └── media-worker/        # media preparation worker
-├── packages/
-│   ├── protocol/            # WebSocket message contracts
-│   ├── session/             # session state, events, fairness, rounds
-│   ├── media/               # media/search/preparation contracts
-│   ├── scoring/             # scoring foundations
-│   ├── lyrics/
-│   └── audio/
-├── docs/
-│   ├── architecture/
-│   ├── product/
-│   └── decisions/
-└── README.md
-```
+### 4. Comandos úteis
 
-## Signaling environment
+Execute na raiz do projeto:
 
-```text
-PORT=8787
-DEFAULT_SESSION_CAPACITY=50
-MAX_SONGS_PER_PARTICIPANT=3
-LEGACY_SNAPSHOT_BROADCAST=true
-```
+| Arquivo | Ação |
+|---|---|
+| `scripts\status.bat` | Verifica containers e portas |
+| `scripts\logs.bat` | Acompanha os logs dos serviços |
+| `scripts\restart.bat` | Reinicia os serviços |
+| `scripts\stop.bat` | Para os serviços, preservando os volumes de mídia e modelos |
+| `scripts\test.bat` | Executa verificações internas disponíveis |
 
-The signaling service runs `src/serverPartyReadyV2.ts` by default.
+A biblioteca de músicas preparadas e os modelos ficam em volumes Docker. Parar a stack com `scripts\stop.bat` não apaga esses volumes.
 
-## Operacao do Host de teste
+## Desenvolvimento e validação
 
-Para o teste real do KaraokeAI, o projeto pode ser executado sem VS Code. O Docker Compose sobe a aplicacao Web, o Signaling e o Media Worker como uma unica stack.
+A aplicação Web está em `apps/web`, o servidor de sessões em `apps/signaling` e o serviço de mídia em `apps/media-worker`. O modo Docker acima é o caminho recomendado para testar os três integrados.
 
-Na maquina Windows de teste:
-
-```text
-scripts\\update.bat   -> baixa o main e reconstrói as imagens
-scripts\\start.bat    -> inicia a stack completa
-scripts\\status.bat   -> mostra containers e portas
-scripts\\logs.bat     -> acompanha os logs
-scripts\\restart.bat  -> reinicia a stack
-scripts\\stop.bat     -> para a stack
-scripts\\test.bat     -> executa smoke/compile checks internos
-```
-
-Depois de iniciar, o Host Web fica em:
-
-```text
-http://localhost:5173
-```
-
-Para celulares e TV na mesma rede, use o endereço LAN do PC:
-
-```text
-http://IP_DO_PC:5173
-```
-
-Para ativar o microfone em celulares, use o endpoint HTTPS:
-
-```text
-https://IP_DO_PC:5443
-```
-
-Na primeira abertura, o navegador poderá mostrar um aviso de certificado local. É esperado no ambiente de teste; aceite a exceção para continuar. O HTTPS também mantém o WebSocket e o Media Worker no mesmo endereço seguro.
-
-A separação vocal do ambiente Docker usa o modo de maior qualidade por padrão. O cache de mídia do ambiente de qualidade é separado do cache anterior, portanto músicas antigas não serão reutilizadas no primeiro teste.
-
-O VS Code continua útil para desenvolvimento e análise local, mas **não é necessário para executar o ambiente de teste integrado**. O objetivo deste fluxo é aproximar o teste do modo como o KaraokeAI será operado como produto.
-
-## Local development
-
-### 1. Signaling
-
-```bash
-npm --prefix apps/signaling install
-npm --prefix apps/signaling run dev
-```
-
-### 2. Web/PWA
-
-```bash
-npm --prefix apps/web install
-npm --prefix apps/web run dev
-```
-
-The web client defaults to WebSocket port `8787`. Use `VITE_SIGNALING_URL` to point it at another signaling host/port.
-
-### 3. Media worker
-
-The media worker has its own Python environment and compile check. See `apps/media-worker/` for its current runtime instructions.
-
-## Automated smoke test
-
-The signaling application includes an end-to-end smoke test:
-
-```bash
-npm --prefix apps/signaling run build
-npm --prefix apps/signaling run dev
-# in another terminal
-npm --prefix apps/signaling run smoke
-```
-
-The CI workflow starts the built signaling server and runs the smoke test automatically. It verifies the core party path without requiring physical devices.
-
-## Recommended real-device test progression
-
-Do not jump directly to 50 phones. Validate the complete flow progressively, starting with the minimum valid party:
-
-```text
-1 phone (Host)
-        ↓
-2 phones
-        ↓
-5 phones
-        ↓
-10 phones
-        ↓
-20 phones
-        ↓
-30 phones
-        ↓
-50 phones
-```
-
-The Host phone counts as one active participant. A TV does not consume a participant slot.
-
-At each level validate:
-
-1. create/join/reconnect;
-2. participant presence;
-3. add/remove songs;
-4. per-user queue limit;
-5. fair next singer;
-6. preparation and selected key;
-7. singer call;
-8. microphone/WebRTC;
-9. playback controls;
-10. automatic completion;
-11. scoring;
-12. restart policy;
-13. round completion;
-14. Host transfer/recovery;
-15. TV synchronization;
-16. event-loss recovery through snapshots.
-
-## CI/build gate
-
-Every implementation change must pass all repository checks before being treated as complete:
-
-```text
-web
- ├─ npm run typecheck
- └─ npm run build
-
-signaling
- ├─ npm run build
- └─ npm run smoke
-
-media-worker
- └─ python -m compileall -q src
-```
-
-The smoke test is intentionally independent of browser UI so a green CI result means the signaling protocol is executable, not merely type-correct.
+O CI verifica o typecheck/build da Web, build e smoke test do signaling e compilação/testes unitários do Media Worker. Antes de considerar uma versão pronta, ainda é necessário testar no mínimo PC + celular + TV, incluindo entrada/reconexão, fila, reprodução, microfone/áudio, cancelamento de música e preparação da próxima faixa.
