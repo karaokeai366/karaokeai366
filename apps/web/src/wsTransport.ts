@@ -404,7 +404,7 @@ export function discoverActiveSessions(url: string): Promise<ActiveSessionSummar
 
 export class WebSocketTransport {
   private socket: WebSocket | null = null;
-  private intentionalClose = false;
+  private readonly intentionalSockets = new WeakSet<WebSocket>();
   private readonly listeners = new Set<(message: RawMessage) => void>();
   private readonly connectionListeners = new Set<(state: 'open' | 'close', intentional: boolean) => void>();
   private sessionState: SessionState | null = null;
@@ -429,7 +429,6 @@ export class WebSocketTransport {
 
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.intentionalClose = false;
       const socket = new WebSocket(this.url);
       this.socket = socket;
 
@@ -447,9 +446,14 @@ export class WebSocketTransport {
         }
       };
       socket.onclose = () => {
-        this.socket = null;
-        document.getElementById(HOST_CONTROLS_ID)?.remove();
-        for (const listener of this.connectionListeners) listener('close', this.intentionalClose);
+        const intentional = this.intentionalSockets.has(socket);
+        // A replaced socket may close after a newer connection is already active.
+        // Only the socket that is still current may clear transport/UI state.
+        if (this.socket === socket) {
+          this.socket = null;
+          document.getElementById(HOST_CONTROLS_ID)?.remove();
+        }
+        for (const listener of this.connectionListeners) listener('close', intentional);
       };
     });
   }
@@ -540,9 +544,12 @@ export class WebSocketTransport {
   }
 
   disconnect(): void {
-    this.intentionalClose = true;
-    this.socket?.close();
-    this.socket = null;
+    const socket = this.socket;
+    if (socket) {
+      this.intentionalSockets.add(socket);
+      socket.close();
+    }
+    if (this.socket === socket) this.socket = null;
     document.getElementById(HOST_CONTROLS_ID)?.remove();
   }
 
@@ -553,9 +560,10 @@ export class WebSocketTransport {
 
     // A nova sessão sempre começa em uma conexão WebSocket nova. Isso evita
     // misturar contexto, cursores de eventos ou callbacks da sessão anterior.
-    this.intentionalClose = true;
-    this.socket.close();
-    this.socket = null;
+    const previousSocket = this.socket;
+    this.intentionalSockets.add(previousSocket);
+    previousSocket.close();
+    if (this.socket === previousSocket) this.socket = null;
     document.getElementById(HOST_CONTROLS_ID)?.remove();
 
     this.sessionState = null;
