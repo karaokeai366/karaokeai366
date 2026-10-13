@@ -168,11 +168,18 @@ try {
     m.payload?.payload?.queueEntryId === queueEntryId
   );
   const performanceId = startedPerformance.payload.payload.performanceId;
+  // Comandos de uma tentativa antiga não podem pausar a apresentação atual.
+  first.send('playback.control', { action: 'pause', queueEntryId, performanceId: 'forged-performance', positionSeconds: 10 });
+  await first.waitFor(m => m.type === 'session.error' && String(m.payload?.message ?? '').includes('apresentação atual'));
+  first.send('playback.control', { action: 'pause', queueEntryId, performanceId, positionSeconds: 10 });
+  await first.waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.paused' && m.payload?.payload?.queueEntryId === queueEntryId);
+  first.send('playback.control', { action: 'resume', queueEntryId, performanceId });
+  await first.waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.resumed' && m.payload?.payload?.queueEntryId === queueEntryId);
   first.send('queue.status.set', { queueEntryId, status: 'ready', performanceId: 'forged-performance' });
   await first.waitFor(m => m.type === 'session.error' && String(m.payload?.message ?? '').includes('estado desta música'));
-  singer.send('playback.control', { action: 'pause', queueEntryId, positionSeconds: 10 });
+  singer.send('playback.control', { action: 'pause', queueEntryId, performanceId, positionSeconds: 10 });
   await first.waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.paused');
-  singer.send('playback.control', { action: 'resume', queueEntryId });
+  singer.send('playback.control', { action: 'resume', queueEntryId, performanceId });
   await first.waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.resumed');
   await tv.waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.started');
 
@@ -471,7 +478,7 @@ try {
     audioLoadHost.send('performance.participant.remove', { queueEntryId: audioQueueEntryId, performanceId: audioPerformanceId, participantId: audioLoadGuests[index].senderId });
     await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.participant.removed' && m.payload?.payload?.participantId === audioLoadGuests[index].senderId, TIMEOUT, `audio-load: guest-${index + 1} participant.removed`);
   }
-  audioLoadHost.send('playback.control', { action: 'end', queueEntryId: audioQueueEntryId });
+  audioLoadHost.send('playback.control', { action: 'end', queueEntryId: audioQueueEntryId, performanceId: audioPerformanceId });
   await audioLoadGuests[0].waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.finished' && m.payload?.payload?.queueEntryId === audioQueueEntryId);
   // O Host pode cair durante a música sem interromper a apresentação:
   // o controle é compartilhado entre TV e celulares.
@@ -486,6 +493,7 @@ try {
   handoverSinger.send('playback.control', {
     action: 'pause',
     queueEntryId: disconnectQueueEntryId,
+    performanceId: disconnectPerformanceId,
     positionSeconds: 12
   });
   const paused = await handoverSinger.waitFor(m =>
