@@ -168,8 +168,7 @@ function applyQueueStatus(s: Session, q: any, payload: any, actor: string) {
     ...(payload.preparationStage !== undefined ? { preparationStage: String(payload.preparationStage) } : {}),
     ...(Number.isFinite(payload.preparationProgress) ? { preparationProgress: clamp(Number(payload.preparationProgress), 0, 100) } : {}),
     ...(payload.preparationMessage !== undefined ? { preparationMessage: String(payload.preparationMessage) } : {}),
-    ...(payload.playbackStartedAt ? { playbackStartedAt: Number(payload.playbackStartedAt) } : {}),
-    ...(payload.performanceId ? { activePerformanceId: String(payload.performanceId) } : {})
+    ...(payload.playbackStartedAt ? { playbackStartedAt: Number(payload.playbackStartedAt) } : {})
   };
   s.state.queue = s.state.queue.map((x: any) => x.id === q.id ? updated : x);
   changed(s, 'queue.updated', { entry: updated, queueEntryId: q.id }, actor);
@@ -339,6 +338,7 @@ wss.on('connection', ws => {
         const q = s.state.queue.find((x: any) => x.id === String(m.payload?.queueEntryId ?? '')); if (!q) return fail(ws, 'Música não encontrada.');
         const status = String(m.payload?.status ?? ''); if (!['queued','preparing','ready','playing','completed','cancelled'].includes(status)) return fail(ws, 'Status inválido.');
         if (c.participantId !== s.hostId && q.ownerParticipantId !== c.participantId) return fail(ws, 'Sem permissão para alterar esta música.');
+        if (c.participantId !== s.hostId && ['playing', 'completed', 'cancelled'].includes(q.status)) return fail(ws, 'O estado desta música não pode mais ser alterado pelo participante.');
         if (c.participantId !== s.hostId && !['queued', 'preparing', 'ready'].includes(status)) return fail(ws, 'Somente o Host pode iniciar, concluir ou cancelar uma apresentação.');
         if (status === 'playing') { if (s.state.queue.some((x: any) => x.status === 'playing' && x.id !== q.id)) return fail(ws, 'Já existe uma música em reprodução.'); startSong(s, q); }
         else applyQueueStatus(s, q, m.payload, c.participantId); break;
