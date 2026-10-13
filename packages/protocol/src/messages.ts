@@ -45,6 +45,19 @@ export interface Envelope<TPayload = unknown> {
 }
 
 export interface SessionCreateRequest { maxParticipants?: number; }
+export interface SessionReconnectRequest {
+  role?: 'host' | 'participant' | 'tv';
+  reconnectToken: string;
+}
+export interface SessionCreatedResponse {
+  sessionId: string;
+  hostParticipantId: string;
+  reconnectToken: string;
+  state: unknown;
+  sequence: number;
+}
+export interface SessionJoinedResponse extends SessionCreatedResponse {}
+export interface SessionReconnectedResponse extends SessionCreatedResponse {}
 export interface SessionSettingsSetRequest { autoAdvance?: boolean; maxParticipants?: number; }
 export interface SessionActiveDiscoverRequest {}
 export interface SessionTvDiscoverRequest {}
