@@ -194,9 +194,22 @@ try {
   first.send('performance.complete', {
     queueEntryId,
     performanceId,
+    score: { overall: 101, pitch: 90, precision: 90, rhythm: 90, stability: 90, matchedSamples: 100 }
+  });
+  await first.waitFor(m => m.type === 'session.error' && String(m.payload?.message ?? '').includes('Dados de pontuação inválidos'));
+
+  first.send('performance.complete', {
+    queueEntryId,
+    performanceId,
     score: { overall: 90, pitch: 90, precision: 90, rhythm: 90, stability: 90, matchedSamples: 100 }
   });
   await first.waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.scored');
+  first.send('performance.complete', {
+    queueEntryId,
+    performanceId,
+    score: { overall: 99, pitch: 99, precision: 99, rhythm: 99, stability: 99, matchedSamples: 100 }
+  });
+  await first.waitFor(m => m.type === 'session.error' && String(m.payload?.message ?? '').includes('já recebeu uma pontuação'));
 
   soloHost.send('session.create', { name: 'Solo Host', maxParticipants: 1 });
   await soloHost.waitFor(m => m.type === 'session.created');
