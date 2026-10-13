@@ -254,6 +254,23 @@ try {
   handoverGuest.send('session.command', {
     command: 'performance.audio.offer',
     data: {
+      kind: 'offer',
+      fromParticipantId: 'smoke-handover-target',
+      targetParticipantId: 'smoke-handover-target',
+      queueEntryId: disconnectQueueEntryId,
+      performanceId: disconnectPerformanceId
+    }
+  });
+  await handoverGuest.waitFor(m =>
+    m.type === 'session.error' &&
+    String(m.payload?.message ?? '').includes('origem da sinalização de áudio')
+  );
+
+  handoverGuest.send('session.command', {
+    command: 'performance.audio.offer',
+    data: {
+      kind: 'offer',
+      fromParticipantId: handoverGuest.senderId,
       targetParticipantId: 'smoke-handover-target',
       queueEntryId: disconnectQueueEntryId,
       performanceId: disconnectPerformanceId
@@ -299,7 +316,8 @@ try {
   handoverTarget.send('session.command', {
     command: 'performance.audio.answer',
     data: {
-      fromParticipantId: 'smoke-handover-target',
+      kind: 'answer',
+      fromParticipantId: handoverTarget.senderId,
       targetParticipantId: 'smoke-handover-guest',
       queueEntryId: disconnectQueueEntryId,
       performanceId: disconnectPerformanceId,
@@ -315,7 +333,8 @@ try {
   handoverGuest.send('session.command', {
     command: 'performance.audio.ice-candidate',
     data: {
-      fromParticipantId: 'smoke-handover-guest',
+      kind: 'ice-candidate',
+      fromParticipantId: handoverGuest.senderId,
       targetParticipantId: 'smoke-handover-target',
       queueEntryId: disconnectQueueEntryId,
       performanceId: disconnectPerformanceId,
@@ -331,7 +350,8 @@ try {
   handoverTarget.send('session.command', {
     command: 'performance.audio.ice-candidate',
     data: {
-      fromParticipantId: 'smoke-handover-target',
+      kind: 'ice-candidate',
+      fromParticipantId: handoverTarget.senderId,
       targetParticipantId: 'smoke-handover-guest',
       queueEntryId: disconnectQueueEntryId,
       performanceId: disconnectPerformanceId,
