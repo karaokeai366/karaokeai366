@@ -2453,6 +2453,12 @@ export function App() {
   const [tvSelectedSession, setTvSelectedSession] = useState<ActiveSessionSummary | null>(null);
   const [tvDiscovering, setTvDiscovering] = useState(false);
 
+  // Load the persistent library whenever the host opens, even in a new session.
+  useEffect(() => {
+    if (view !== 'host') return;
+    void loadLibrary('');
+  }, [view]);
+
 
   useEffect(() => {
     if (view !== 'home') return;
@@ -3099,6 +3105,9 @@ export function App() {
         });
 
         if (status.status === 'ready') {
+          // Refresh the permanent library after a successful preparation so the
+          // new asset is immediately visible and reusable in later sessions.
+          void loadLibrary('');
           finished = true;
           continue;
         }
