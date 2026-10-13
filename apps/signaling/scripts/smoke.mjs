@@ -162,7 +162,12 @@ try {
   await first.waitFor(m => m.type === 'session.event' && m.payload?.type === 'queue.updated');
 
   host.send('queue.next');
-  await first.waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.started');
+  const startedPerformance = await first.waitFor(m =>
+    m.type === 'session.event' &&
+    m.payload?.type === 'performance.started' &&
+    m.payload?.payload?.queueEntryId === queueEntryId
+  );
+  const performanceId = startedPerformance.payload.payload.performanceId;
   singer.send('playback.control', { action: 'pause', queueEntryId, positionSeconds: 10 });
   await first.waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.paused');
   singer.send('playback.control', { action: 'resume', queueEntryId });
@@ -174,7 +179,17 @@ try {
 
   first.send('performance.complete', {
     queueEntryId,
-    performanceId: 'smoke-performance',
+    performanceId: 'stale-performance',
+    score: { overall: 90, pitch: 90, precision: 90, rhythm: 90, stability: 90, matchedSamples: 100 }
+  });
+  await first.waitFor(m =>
+    m.type === 'session.error' &&
+    String(m.payload?.message ?? '').includes('não corresponde à tentativa concluída')
+  );
+
+  first.send('performance.complete', {
+    queueEntryId,
+    performanceId,
     score: { overall: 90, pitch: 90, precision: 90, rhythm: 90, stability: 90, matchedSamples: 100 }
   });
   await first.waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.scored');

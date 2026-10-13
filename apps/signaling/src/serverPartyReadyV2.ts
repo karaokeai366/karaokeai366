@@ -488,6 +488,9 @@ wss.on('connection', ws => {
       case 'performance.complete': {
         const q = s.state.queue.find((x:any) => x.id === String(m.payload?.queueEntryId ?? ''));
         if (!q || q.ownerParticipantId !== c.participantId || q.status !== 'completed') return fail(ws, 'A apresentação não pode receber esta pontuação.');
+        if (!m.payload?.performanceId || String(m.payload.performanceId) !== String(q.activePerformanceId ?? '')) {
+          return fail(ws, 'A pontuação não corresponde à tentativa concluída desta música.');
+        }
         const raw = m.payload?.score ?? {}; q.score = { overall: clamp(Number(raw.overall),0,100), pitch: clamp(Number(raw.pitch),0,100), precision: clamp(Number(raw.precision),0,100), rhythm: clamp(Number(raw.rhythm),0,100), stability: clamp(Number(raw.stability),0,100), matchedSamples: Math.max(0, Math.floor(Number(raw.matchedSamples ?? 0))) };
         const rows = s.state.queue.filter((x:any) => x.ownerParticipantId === q.ownerParticipantId && x.roundId === s.state.roundId && x.status === 'completed' && x.score); const required = s.state.roundMode?.kind === 'songs' ? Number(s.state.roundMode.songCount) : undefined;
         s.state.roundResultsByParticipant[q.ownerParticipantId] = { roundId:s.state.roundId, completedSongs:rows.length, ...(required ? {requiredSongs:required}:{}), score:rows.length ? Math.round(rows.reduce((a:number,x:any)=>a+x.score.overall,0)/rows.length):0, finished:required ? rows.length >= required:false, updatedAt:Date.now(), songScores:rows.map((x:any)=>({queueEntryId:x.id,score:x.score.overall})) };
