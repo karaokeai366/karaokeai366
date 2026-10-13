@@ -43,6 +43,11 @@ type SessionHistoryEntry = {
 };
 
 const SESSION_KEY = 'karaokeai.session.v1';
+const RECONNECT_TOKEN_PREFIX = 'karaokeai.reconnect-token.v1';
+
+function reconnectTokenKey(sessionId: string, participantId: string): string {
+  return `${RECONNECT_TOKEN_PREFIX}:${sessionId}:${participantId}`;
+}
 const HISTORY_KEY = 'karaokeai.session-history.v1';
 const HOST_CONTROLS_ID = 'karaokeai-host-session-controls';
 
@@ -469,6 +474,22 @@ export class WebSocketTransport {
   }
 
   private processIncomingMessage(message: RawMessage): void {
+    if (message.type === 'session.created' || message.type === 'session.joined' || message.type === 'session.reconnected') {
+      const payload = message.payload as { sessionId?: string; reconnectToken?: string } | undefined;
+      const token = payload?.reconnectToken;
+      const sessionId = payload?.sessionId ?? this.sessionId;
+      if (typeof token === 'string' && token.length >= 32 && sessionId && this.senderId) {
+        localStorage.setItem(reconnectTokenKey(sessionId, this.senderId), token);
+      }
+    }
+
+    if (message.type === 'session.error') {
+      const errorMessage = String((message.payload as { message?: string } | undefined)?.message ?? '');
+      if (errorMessage === 'Sessão não encontrada.' && this.sessionId && this.senderId) {
+        localStorage.removeItem(reconnectTokenKey(this.sessionId, this.senderId));
+      }
+    }
+
     if (
       message.type === 'session.created'
       || message.type === 'session.joined'
@@ -566,7 +587,18 @@ export class WebSocketTransport {
     // Make Host controls available as soon as the Host sends its first command,
     // even before the server snapshot arrives.
     injectHostSessionControls(this);
-    this.socket.send(JSON.stringify({ type, sessionId, senderId, payload, timestamp: Date.now() }));
+    let outgoingType = type;
+    let outgoingPayload = payload;
+    const token = localStorage.getItem(reconnectTokenKey(sessionId, senderId));
+    if (type === 'session.create' && token) {
+      // Ao restaurar uma sessão do Host, tenta recuperar a sessão existente
+      // com a credencial privada antes de considerar uma criação nova.
+      outgoingType = 'session.reconnect';
+      outgoingPayload = { ...(payload && typeof payload === 'object' ? payload as Record<string, unknown> : {}), role: 'host', reconnectToken: token };
+    } else if (type === 'session.reconnect' && token) {
+      outgoingPayload = { ...(payload && typeof payload === 'object' ? payload as Record<string, unknown> : {}), reconnectToken: token };
+    }
+    this.socket.send(JSON.stringify({ type: outgoingType, sessionId, senderId, payload: outgoingPayload, timestamp: Date.now() }));
   }
 
   subscribe(handler: (message: RawMessage) => void): () => void {

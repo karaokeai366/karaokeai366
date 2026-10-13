@@ -6,16 +6,23 @@ const sessionId = `smoke-${Date.now()}`;
 const soloSessionId = `smoke-solo-${Date.now()}`;
 const handoverSessionId = `smoke-handover-${Date.now()}`;
 const audioLoadSessionId = `smoke-audio-load-${Date.now()}`;
+const authSessionId = `smoke-auth-${Date.now()}`;
 const TIMEOUT = 15000;
+const storedReconnectTokens = new Map();
 
-function client(senderId, clientSessionId = sessionId) {
+function client(senderId, clientSessionId = sessionId, options = {}) {
   const ws = new WebSocket(url);
   const messages = [];
   const waiters = [];
+  let reconnectToken = '';
 
   ws.on('message', raw => {
     const message = JSON.parse(raw.toString());
     messages.push(message);
+    if (['session.created', 'session.joined', 'session.reconnected'].includes(message.type) && typeof message.payload?.reconnectToken === 'string') {
+      reconnectToken = message.payload.reconnectToken;
+      storedReconnectTokens.set(`${clientSessionId}:${senderId}`, reconnectToken);
+    }
     for (const waiter of [...waiters]) {
       if (waiter.predicate(message)) {
         waiter.resolve(message);
@@ -52,13 +59,17 @@ function client(senderId, clientSessionId = sessionId) {
       });
     },
     send(type, payload = {}) {
+      const storedToken = options.reuseStoredToken === false ? '' : (storedReconnectTokens.get(`${clientSessionId}:${senderId}`) ?? reconnectToken);
+      const outgoingPayload = type === 'session.reconnect' && storedToken
+        ? { ...payload, reconnectToken: storedToken }
+        : payload;
       ws.send(JSON.stringify({
         id: crypto.randomUUID(),
         type,
         sessionId: clientSessionId,
         senderId,
         timestamp: Date.now(),
-        payload
+        payload: outgoingPayload
       }));
     }
   };
@@ -85,11 +96,31 @@ const handoverGuest = client('smoke-handover-guest', handoverSessionId);
 const audioLoadHost = client('smoke-audio-load-host', audioLoadSessionId);
 const audioLoadTv = client('smoke-audio-load-tv', audioLoadSessionId);
 const audioLoadGuests = Array.from({ length: 16 }, (_, index) => client(`smoke-audio-load-guest-${index + 1}`, audioLoadSessionId));
+const authHost = client('smoke-auth-host', authSessionId);
+const authAttacker = client('smoke-auth-host', authSessionId, { reuseStoredToken: false });
+const authReconnect = client('smoke-auth-host', authSessionId);
 // Host + singer + 48 additional participants = exactly 50 active participants.
 const participants = Array.from({ length: 48 }, (_, index) => client(`smoke-party-${index + 1}`));
 
 try {
-  await openClients([host, singer, tv, overflow, soloHost, soloSinger, soloTv, handoverHost, handoverSinger, handoverTarget, handoverTv, handoverGuest, audioLoadHost, audioLoadTv, ...audioLoadGuests, ...participants]);
+  await openClients([host, singer, tv, overflow, soloHost, soloSinger, soloTv, handoverHost, handoverSinger, handoverTarget, handoverTv, handoverGuest, audioLoadHost, audioLoadTv, ...audioLoadGuests, authHost, authAttacker, authReconnect, ...participants]);
+
+  // Segurança de reconexão: o identificador público, sozinho, não autentica a identidade.
+  authHost.send('session.create', { name: 'Host de Segurança', maxParticipants: 4 });
+  const authCreated = await authHost.waitFor(m => m.type === 'session.created');
+  const authToken = authCreated.payload?.reconnectToken;
+  if (typeof authToken !== 'string' || authToken.length < 32) {
+    throw new Error('O servidor não forneceu uma credencial privada de reconexão.');
+  }
+  if (JSON.stringify(authCreated.payload?.state ?? {}).includes(authToken)) {
+    throw new Error('A credencial de reconexão vazou para o estado público da sessão.');
+  }
+  authAttacker.send('session.reconnect', { role: 'host' });
+  await authAttacker.waitFor(m => m.type === 'session.error' && String(m.payload?.message ?? '').includes('inválida'));
+  authReconnect.send('session.reconnect', { role: 'host', reconnectToken: authToken });
+  await authReconnect.waitFor(m => m.type === 'session.reconnected');
+  authReconnect.send('session.state.request');
+  await authReconnect.waitFor(m => m.type === 'session.state');
 
   host.send('session.create', { name: 'Smoke Host', maxParticipants: 50 });
   await host.waitFor(m => m.type === 'session.created');
@@ -411,7 +442,7 @@ try {
   console.log('SIGNALING_PARTY_SMOKE_OK participants=50 queueLimit=3 capacity=1..50 role-controls=true reconnect=true multi-audio=true audio-load=2,5,8,16');
   try { reconnect.ws.close(); } catch {}
 } finally {
-  for (const c of [host, singer, tv, overflow, soloHost, soloSinger, soloTv, handoverHost, handoverSinger, handoverTarget, handoverTv, handoverGuest, audioLoadHost, audioLoadTv, ...audioLoadGuests, ...participants]) {
+  for (const c of [host, singer, tv, overflow, soloHost, soloSinger, soloTv, handoverHost, handoverSinger, handoverTarget, handoverTv, handoverGuest, audioLoadHost, audioLoadTv, ...audioLoadGuests, authHost, authAttacker, authReconnect, ...participants]) {
     try { c.ws.close(); } catch {}
   }
 }

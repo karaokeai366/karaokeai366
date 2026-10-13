@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -6,7 +6,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 type Role = 'host' | 'participant' | 'tv';
 type Client = { socket: WebSocket; sessionId: string; participantId: string; role: Role };
 type Message = { type?: string; sessionId?: string; senderId?: string; payload?: any };
-type Session = { id: string; hostId: string; state: any; clients: Map<string, Client>; sequence: number; hostDisconnectedAt?: number };
+type Session = { id: string; hostId: string; state: any; clients: Map<string, Client>; sequence: number; reconnectTokenHashes: Map<string, string>; hostDisconnectedAt?: number };
 type EventType = 'participant.joined' | 'participant.left' | 'participant.updated' | 'host.changed' | 'host.transfer.pending' | 'queue.added' | 'queue.updated' | 'queue.removed' | 'queue.next' | 'singer.called' | 'performance.started' | 'performance.paused' | 'performance.resumed' | 'performance.finished' | 'performance.scored' | 'performance.participant.added' | 'performance.participant.removed' | 'performance.audio.state' | 'round.updated' | 'session.settings.changed';
 
 const port = Number(process.env.PORT ?? 8787);
@@ -26,7 +26,8 @@ function persistSessions(): void {
         id: session.id,
         hostId: session.hostId,
         state: session.state,
-        sequence: session.sequence
+        sequence: session.sequence,
+        reconnectTokenHashes: Object.fromEntries(session.reconnectTokenHashes)
       }));
     writeFileSync(sessionStorePath, JSON.stringify({ version: 1, sessions: persisted }), 'utf8');
   } catch (error) {
@@ -53,7 +54,8 @@ function restoreSessions(): void {
         hostId: item.hostId,
         state,
         clients: new Map(),
-        sequence: Number.isFinite(item.sequence) ? Number(item.sequence) : 0
+        sequence: Number.isFinite(item.sequence) ? Number(item.sequence) : 0,
+        reconnectTokenHashes: new Map(Object.entries(item.reconnectTokenHashes && typeof item.reconnectTokenHashes === 'object' ? item.reconnectTokenHashes : {}).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
       });
     }
     if (stored.length) {
@@ -76,6 +78,8 @@ function findTvSession(): Session | undefined {
 
 function clamp(n: number, min: number, max: number) { return Number.isFinite(n) ? Math.max(min, Math.min(max, Math.floor(n))) : min; }
 function validId(v: unknown): v is string { return typeof v === 'string' && v.trim().length > 0 && v.length <= 128; }
+function createReconnectToken(): string { return randomBytes(32).toString('base64url'); }
+function hashReconnectToken(token: string): string { return createHash('sha256').update(token, 'utf8').digest('hex'); }
 function send(ws: WebSocket, type: string, payload: unknown) { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ id: randomUUID(), type, timestamp: Date.now(), payload })); }
 function fail(ws: WebSocket, message: string) { send(ws, 'session.error', { message }); }
 function person(s: Session, id: string) { return s.state.participants.find((p: any) => p.id === id); }
@@ -246,10 +250,11 @@ wss.on('connection', ws => {
       let host = state.participants.find((p: any) => p.id === m.senderId);
       if (host) { host.role = 'host'; host.online = true; } else state.participants.unshift({ id: m.senderId, name: String(m.payload?.name ?? 'Host').slice(0, 30), role: 'host', joinedAt: Date.now(), capabilities: m.payload?.capabilities ?? {}, online: true });
       state.restartCreditsByParticipant[m.senderId] ??= restartCredits(state.roundMode);
-      const s: Session = { id: m.sessionId, hostId: m.senderId, state, clients: new Map(), sequence: 0 };
+      const reconnectToken = createReconnectToken();
+      const s: Session = { id: m.sessionId, hostId: m.senderId, state, clients: new Map(), sequence: 0, reconnectTokenHashes: new Map([[m.senderId, hashReconnectToken(reconnectToken)]]) };
       const c: Client = { socket: ws, sessionId: s.id, participantId: m.senderId, role: 'host' }; s.clients.set(c.participantId, c); sockets.set(ws, c); sessions.set(s.id, s);
       persistSessions();
-      return send(ws, 'session.created', { sessionId: s.id, hostParticipantId: s.hostId, ...snapshot(s) });
+      return send(ws, 'session.created', { sessionId: s.id, hostParticipantId: s.hostId, reconnectToken, ...snapshot(s) });
     }
 
     const c = sockets.get(ws); const s = sessions.get(m.sessionId);
@@ -258,21 +263,27 @@ wss.on('connection', ws => {
       const role: Role = m.payload?.role === 'tv' ? 'tv' : 'participant';
       if (s.clients.has(m.senderId)) return fail(ws, 'Este participante já está conectado.');
       let p = person(s, m.senderId);
-      if (p && p.online !== false) return fail(ws, 'Este participante já está ativo nesta sessão.');
+      if (p) return fail(ws, 'Esta identidade já pertence à sessão. Use a reconexão segura neste aparelho ou entre como um novo participante.');
       // A reconexão de uma identidade já existente não deve ser bloqueada pela
       // capacidade: participantes offline não ocupam slot e podem retornar.
       if (!p && role !== 'tv' && active(s) >= s.state.maxParticipants) {
         return fail(ws, 'A sessão atingiu a capacidade de participantes.');
       }
-      if (p) { p.online = true; p.role = role; } else { p = { id: m.senderId, name: String(m.payload?.name ?? 'Participante').slice(0, 30), role, joinedAt: Date.now(), capabilities: m.payload?.capabilities ?? {}, online: true }; s.state.participants.push(p); }
+      p = { id: m.senderId, name: String(m.payload?.name ?? 'Participante').slice(0, 30), role, joinedAt: Date.now(), capabilities: m.payload?.capabilities ?? {}, online: true }; s.state.participants.push(p);
+      const reconnectToken = createReconnectToken();
+      s.reconnectTokenHashes.set(m.senderId, hashReconnectToken(reconnectToken));
       if (role !== 'tv') ensureCredits(s, m.senderId);
       const nc: Client = { socket: ws, sessionId: s.id, participantId: m.senderId, role }; s.clients.set(nc.participantId, nc); sockets.set(ws, nc);
       changed(s, 'participant.joined', { participant: p, participantCount: active(s) }, m.senderId);
-      return send(ws, 'session.joined', { sessionId: s.id, hostParticipantId: s.hostId, ...snapshot(s) });
+      return send(ws, 'session.joined', { sessionId: s.id, hostParticipantId: s.hostId, reconnectToken, ...snapshot(s) });
     }
 
     if (m.type === 'session.reconnect') {
       if (!s) return fail(ws, 'Sessão não encontrada.'); const p = person(s, m.senderId); if (!p) return fail(ws, 'Participante não encontrado.');
+      const expectedTokenHash = s.reconnectTokenHashes.get(m.senderId);
+      const suppliedToken = typeof m.payload?.reconnectToken === 'string' ? m.payload.reconnectToken : '';
+      if (!expectedTokenHash) return fail(ws, 'Esta sessão foi criada por uma versão antiga e não possui credencial de reconexão. Crie uma nova sessão para ativar a reconexão segura.');
+      if (!suppliedToken || hashReconnectToken(suppliedToken) !== expectedTokenHash) return fail(ws, 'Credencial de reconexão inválida. Entre novamente usando o aparelho que criou esta identidade.');
       const old = s.clients.get(m.senderId); if (old && old.socket !== ws) { try { old.socket.close(); } catch {} }
       const isOriginalHost = m.senderId === s.hostId;
       if (isOriginalHost) {
@@ -293,7 +304,7 @@ wss.on('connection', ws => {
         }
       }
       p.online = true; const nc: Client = { socket: ws, sessionId: s.id, participantId: m.senderId, role: p.role }; s.clients.set(m.senderId, nc); sockets.set(ws, nc);
-      send(ws, 'session.reconnected', { sessionId: s.id, hostParticipantId: s.hostId, ...snapshot(s) }); return emit(s, 'participant.updated', { participant: p }, m.senderId);
+      send(ws, 'session.reconnected', { sessionId: s.id, hostParticipantId: s.hostId, reconnectToken: suppliedToken, ...snapshot(s) }); return emit(s, 'participant.updated', { participant: p }, m.senderId);
     }
 
     if (!c || !s || c.sessionId !== s.id) return fail(ws, 'Conecte-se a uma sessão primeiro.');
@@ -577,7 +588,11 @@ wss.on('connection', ws => {
     }
   });
   ws.on('close', () => {
-    const c = sockets.get(ws); if (!c) return; sockets.delete(ws); const s = sessions.get(c.sessionId); if (!s) return; const p = person(s,c.participantId); if (p) p.online = false; s.clients.delete(c.participantId);
+    const c = sockets.get(ws); if (!c) return; sockets.delete(ws); const s = sessions.get(c.sessionId); if (!s) return;
+    // Uma conexão antiga pode fechar depois que a reconexão já registrou o novo socket.
+    // Nesse caso, não remova nem marque offline a conexão que acabou de assumir a identidade.
+    if (s.clients.get(c.participantId)?.socket !== ws) return;
+    const p = person(s,c.participantId); if (p) p.online = false; s.clients.delete(c.participantId);
     if (c.participantId === s.hostId) {
       s.hostDisconnectedAt = Date.now();
       s.state.pendingHostParticipantId = undefined;
