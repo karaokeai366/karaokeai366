@@ -959,7 +959,17 @@ def prepare_asset(
             54,
             "Aguardando disponibilidade do separador de voz…",
         )
-        with separation_lock:
+        if cancel_check is None:
+            separation_lock.acquire()
+        else:
+            from .cancellable_lock import acquire_lock_cancellable
+
+            if not acquire_lock_cancellable(separation_lock, cancel_check):
+                raise PreparationCancelled("Preparação cancelada pelo usuário.")
+
+        try:
+            if cancel_check and cancel_check():
+                raise PreparationCancelled("Preparação cancelada pelo usuário.")
             report_progress(
                 progress,
                 "separation",
@@ -970,7 +980,7 @@ def prepare_asset(
                 separate_sources_cancellable(
                     normalized,
                     folder,
-                    cancel_check or (lambda: False),
+                    cancel_check,
                     progress=progress,
                 )
                 if cancel_check is not None
@@ -980,6 +990,8 @@ def prepare_asset(
                     progress=progress,
                 )
             )
+        finally:
+            separation_lock.release()
     else:
         report_progress(progress, "separation", 55, "Separando voz e instrumental…")
         vocals, instrumental = separate_sources(normalized, folder)
