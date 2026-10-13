@@ -13,10 +13,14 @@ function client(senderId, clientSessionId = sessionId) {
   const ws = new WebSocket(url);
   const messages = [];
   const waiters = [];
+  let reconnectToken = '';
 
   ws.on('message', raw => {
     const message = JSON.parse(raw.toString());
     messages.push(message);
+    if (['session.created', 'session.joined', 'session.reconnected'].includes(message.type) && typeof message.payload?.reconnectToken === 'string') {
+      reconnectToken = message.payload.reconnectToken;
+    }
     for (const waiter of [...waiters]) {
       if (waiter.predicate(message)) {
         waiter.resolve(message);
@@ -53,13 +57,16 @@ function client(senderId, clientSessionId = sessionId) {
       });
     },
     send(type, payload = {}) {
+      const outgoingPayload = type === 'session.reconnect' && reconnectToken
+        ? { ...payload, reconnectToken }
+        : payload;
       ws.send(JSON.stringify({
         id: crypto.randomUUID(),
         type,
         sessionId: clientSessionId,
         senderId,
         timestamp: Date.now(),
-        payload
+        payload: outgoingPayload
       }));
     }
   };
