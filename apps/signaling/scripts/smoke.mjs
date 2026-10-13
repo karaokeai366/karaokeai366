@@ -8,8 +8,9 @@ const handoverSessionId = `smoke-handover-${Date.now()}`;
 const audioLoadSessionId = `smoke-audio-load-${Date.now()}`;
 const authSessionId = `smoke-auth-${Date.now()}`;
 const TIMEOUT = 15000;
+const storedReconnectTokens = new Map();
 
-function client(senderId, clientSessionId = sessionId) {
+function client(senderId, clientSessionId = sessionId, options = {}) {
   const ws = new WebSocket(url);
   const messages = [];
   const waiters = [];
@@ -20,6 +21,7 @@ function client(senderId, clientSessionId = sessionId) {
     messages.push(message);
     if (['session.created', 'session.joined', 'session.reconnected'].includes(message.type) && typeof message.payload?.reconnectToken === 'string') {
       reconnectToken = message.payload.reconnectToken;
+      storedReconnectTokens.set(`${clientSessionId}:${senderId}`, reconnectToken);
     }
     for (const waiter of [...waiters]) {
       if (waiter.predicate(message)) {
@@ -57,8 +59,9 @@ function client(senderId, clientSessionId = sessionId) {
       });
     },
     send(type, payload = {}) {
-      const outgoingPayload = type === 'session.reconnect' && reconnectToken
-        ? { ...payload, reconnectToken }
+      const storedToken = options.reuseStoredToken === false ? '' : (storedReconnectTokens.get(`${clientSessionId}:${senderId}`) ?? reconnectToken);
+      const outgoingPayload = type === 'session.reconnect' && storedToken
+        ? { ...payload, reconnectToken: storedToken }
         : payload;
       ws.send(JSON.stringify({
         id: crypto.randomUUID(),
@@ -94,7 +97,7 @@ const audioLoadHost = client('smoke-audio-load-host', audioLoadSessionId);
 const audioLoadTv = client('smoke-audio-load-tv', audioLoadSessionId);
 const audioLoadGuests = Array.from({ length: 16 }, (_, index) => client(`smoke-audio-load-guest-${index + 1}`, audioLoadSessionId));
 const authHost = client('smoke-auth-host', authSessionId);
-const authAttacker = client('smoke-auth-host', authSessionId);
+const authAttacker = client('smoke-auth-host', authSessionId, { reuseStoredToken: false });
 const authReconnect = client('smoke-auth-host', authSessionId);
 // Host + singer + 48 additional participants = exactly 50 active participants.
 const participants = Array.from({ length: 48 }, (_, index) => client(`smoke-party-${index + 1}`));
@@ -439,7 +442,7 @@ try {
   console.log('SIGNALING_PARTY_SMOKE_OK participants=50 queueLimit=3 capacity=1..50 role-controls=true reconnect=true multi-audio=true audio-load=2,5,8,16');
   try { reconnect.ws.close(); } catch {}
 } finally {
-  for (const c of [host, singer, tv, overflow, soloHost, soloSinger, soloTv, handoverHost, handoverSinger, handoverTarget, handoverTv, handoverGuest, audioLoadHost, audioLoadTv, ...audioLoadGuests, ...participants]) {
+  for (const c of [host, singer, tv, overflow, soloHost, soloSinger, soloTv, handoverHost, handoverSinger, handoverTarget, handoverTv, handoverGuest, audioLoadHost, audioLoadTv, ...audioLoadGuests, authHost, authAttacker, authReconnect, ...participants]) {
     try { c.ws.close(); } catch {}
   }
 }
