@@ -349,8 +349,12 @@ wss.on('connection', ws => {
       }
       case 'playback.control': {
         if (!['host', 'participant', 'tv'].includes(c.role)) return fail(ws, 'Você não pode controlar a reprodução.');
-        const q = s.state.queue.find((x: any) => x.status === 'playing' && (!m.payload?.queueEntryId || x.id === m.payload.queueEntryId));
+        const queueEntryId = String(m.payload?.queueEntryId ?? '');
+        const performanceId = String(m.payload?.performanceId ?? '');
+        if (!queueEntryId || !performanceId) return fail(ws, 'O comando precisa identificar a música e a apresentação atual.');
+        const q = s.state.queue.find((x: any) => x.status === 'playing' && x.id === queueEntryId);
         if (!q) return fail(ws, 'Não há música em reprodução.');
+        if (performanceId !== String(q.activePerformanceId ?? '')) return fail(ws, 'O comando não corresponde à apresentação atual.');
         const action = m.payload?.action;
         if (action === 'pause') {
           const requestedPosition = Number(m.payload?.positionSeconds);
@@ -362,7 +366,6 @@ wss.on('connection', ws => {
           changed(s, 'performance.paused', { queueEntryId: q.id, playbackPositionSeconds: position }, c.participantId);
         }
         else if (action === 'resume') {
-          if (m.payload?.performanceId && String(m.payload.performanceId) !== String(q.activePerformanceId ?? '')) return fail(ws, 'A apresentação atual não corresponde ao performanceId informado.');
           const position = Math.max(0, Number(q.playbackPositionSeconds ?? 0));
           const updated = { ...q, playbackState: 'playing', playbackStartedAt: Date.now() - position * 1000, hostDisconnectPause: undefined };
           s.state.queue = s.state.queue.map((x:any) => x.id === q.id ? updated : x);
