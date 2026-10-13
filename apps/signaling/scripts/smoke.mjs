@@ -168,6 +168,8 @@ try {
     m.payload?.payload?.queueEntryId === queueEntryId
   );
   const performanceId = startedPerformance.payload.payload.performanceId;
+  first.send('queue.status.set', { queueEntryId, status: 'ready', performanceId: 'forged-performance' });
+  await first.waitFor(m => m.type === 'session.error' && String(m.payload?.message ?? '').includes('estado desta música'));
   singer.send('playback.control', { action: 'pause', queueEntryId, positionSeconds: 10 });
   await first.waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.paused');
   singer.send('playback.control', { action: 'resume', queueEntryId });
@@ -176,6 +178,8 @@ try {
 
   tv.send('playback.finished', { queueEntryId });
   await first.waitFor(m => m.type === 'session.event' && m.payload?.type === 'performance.finished');
+  first.send('queue.status.set', { queueEntryId, status: 'ready' });
+  await first.waitFor(m => m.type === 'session.error' && String(m.payload?.message ?? '').includes('estado desta música'));
 
   first.send('performance.complete', {
     queueEntryId,
