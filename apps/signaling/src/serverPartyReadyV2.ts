@@ -523,6 +523,8 @@ wss.on('connection', ws => {
         s.state.queueSize = 0;
         s.state.pendingHostParticipantId = undefined;
         changed(s, 'session.finished', { state: s.state, endedAt: s.state.endedAt }, c.participantId);
+        sessions.delete(s.id);
+        persistSessions();
         break;
       }
       case 'session.settings.set': {
