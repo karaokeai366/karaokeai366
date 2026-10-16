@@ -8,6 +8,7 @@ export type MessageType =
   | 'session.state'
   | 'session.state.request'
   | 'session.state.set'
+  | 'session.end'
   | 'session.event'
   | 'session.error'
   | 'session.active.discover'
