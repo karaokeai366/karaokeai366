@@ -224,6 +224,11 @@ try {
   await soloSinger.waitFor(m => m.type === 'session.error' && String(m.payload?.message ?? '').includes('capacidade'));
   soloTv.send('session.join', { name: 'Solo TV', role: 'tv' });
   await soloTv.waitFor(m => m.type === 'session.joined');
+  soloTv.send('session.end');
+  await soloTv.waitFor(m => m.type === 'session.error' && String(m.payload?.message ?? '').includes('Somente o Host'));
+  soloHost.send('session.end');
+  await soloHost.waitFor(m => m.type === 'session.event' && m.payload?.type === 'session.finished');
+  await soloTv.waitFor(m => m.type === 'session.event' && m.payload?.type === 'session.finished');
 
   handoverHost.send('session.create', { name: 'Handover Host', maxParticipants: 4 });
   await handoverHost.waitFor(m => m.type === 'session.created');
