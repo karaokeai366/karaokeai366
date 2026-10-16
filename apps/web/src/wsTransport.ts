@@ -323,24 +323,9 @@ function injectHostSessionControls(transport: WebSocketTransport): void {
       );
       if (confirmation !== 'ENCERRAR') return;
 
-      saveHistory(buildHistoryEntry(current, 'end'));
-      const host = current.participants.find((participant) => participant.id === current.hostParticipantId);
-      if (!host) return;
-
-      const endedState = {
-        ...current,
-        participants: [{ ...host, role: 'host', online: true }],
-        queue: [],
-        queueSize: 0,
-        roundResultsByParticipant: {},
-        restartCreditsByParticipant: { [host.id]: 0 },
-        status: 'finished'
-      } as SessionState;
-
       try {
-        transport.sendRaw('session.state.set', current.sessionId, transport.participantId, { state: endedState });
-        localStorage.setItem(SESSION_KEY, JSON.stringify(endedState));
-        window.alert('Sessão encerrada. Os resultados foram preservados em 🏆 Resultados.');
+        transport.sendRaw('session.end', current.sessionId, transport.participantId, {});
+        saveHistory(buildHistoryEntry(current, 'end'));
       } catch {
         window.alert('Não foi possível encerrar a sessão porque a conexão com o servidor foi perdida.');
       }
