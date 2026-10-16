@@ -18,7 +18,8 @@ export type SessionEventType =
   | 'performance.participant.removed'
   | 'performance.audio.state'
   | 'round.updated'
-  | 'session.settings.changed';
+  | 'session.settings.changed'
+  | 'session.finished';
 
 export interface SessionEvent<TPayload = unknown> {
   eventId: string;

@@ -7,7 +7,7 @@ type Role = 'host' | 'participant' | 'tv';
 type Client = { socket: WebSocket; sessionId: string; participantId: string; role: Role };
 type Message = { type?: string; sessionId?: string; senderId?: string; payload?: any };
 type Session = { id: string; hostId: string; state: any; clients: Map<string, Client>; sequence: number; reconnectTokenHashes: Map<string, string>; hostDisconnectedAt?: number };
-type EventType = 'participant.joined' | 'participant.left' | 'participant.updated' | 'host.changed' | 'host.transfer.pending' | 'queue.added' | 'queue.updated' | 'queue.removed' | 'queue.next' | 'singer.called' | 'performance.started' | 'performance.paused' | 'performance.resumed' | 'performance.finished' | 'performance.scored' | 'performance.participant.added' | 'performance.participant.removed' | 'performance.audio.state' | 'round.updated' | 'session.settings.changed';
+type EventType = 'participant.joined' | 'participant.left' | 'participant.updated' | 'host.changed' | 'host.transfer.pending' | 'queue.added' | 'queue.updated' | 'queue.removed' | 'queue.next' | 'singer.called' | 'performance.started' | 'performance.paused' | 'performance.resumed' | 'performance.finished' | 'performance.scored' | 'performance.participant.added' | 'performance.participant.removed' | 'performance.audio.state' | 'round.updated' | 'session.settings.changed' | 'session.finished';
 
 const port = Number(process.env.PORT ?? 8787);
 const defaultCapacity = clamp(Number(process.env.DEFAULT_SESSION_CAPACITY ?? 50), 1, 50);
@@ -513,6 +513,19 @@ wss.on('connection', ws => {
         const rows = s.state.queue.filter((x:any) => x.ownerParticipantId === q.ownerParticipantId && x.roundId === s.state.roundId && x.status === 'completed' && x.score); const required = s.state.roundMode?.kind === 'songs' ? Number(s.state.roundMode.songCount) : undefined;
         s.state.roundResultsByParticipant[q.ownerParticipantId] = { roundId:s.state.roundId, completedSongs:rows.length, ...(required ? {requiredSongs:required}:{}), score:rows.length ? Math.round(rows.reduce((a:number,x:any)=>a+x.score.overall,0)/rows.length):0, finished:required ? rows.length >= required:false, updatedAt:Date.now(), songScores:rows.map((x:any)=>({queueEntryId:x.id,score:x.score.overall})) };
         changed(s, 'performance.scored', { queueEntryId:q.id, score:q.score }, c.participantId); break;
+      }
+      case 'session.end': {
+        if (c.participantId !== s.hostId) return fail(ws, 'Somente o Host pode encerrar a sessão.');
+        if (s.state.status === 'finished') return fail(ws, 'A sessão já foi encerrada.');
+        s.state.status = 'finished';
+        s.state.endedAt = Date.now();
+        s.state.queue = [];
+        s.state.queueSize = 0;
+        s.state.pendingHostParticipantId = undefined;
+        changed(s, 'session.finished', { state: s.state, endedAt: s.state.endedAt }, c.participantId);
+        sessions.delete(s.id);
+        persistSessions();
+        break;
       }
       case 'session.settings.set': {
         if (c.participantId !== s.hostId) return fail(ws, 'Somente o Host pode alterar configurações.'); const next = m.payload?.maxParticipants === undefined ? s.state.maxParticipants : clamp(Number(m.payload.maxParticipants),1,50);

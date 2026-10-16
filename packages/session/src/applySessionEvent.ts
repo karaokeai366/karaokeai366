@@ -200,6 +200,15 @@ export function applySessionEvent<T extends Record<string, any>>(
       };
     }
 
+    case 'session.finished':
+      return {
+        ...state,
+        ...(payload?.state ?? {}),
+        status: 'finished',
+        queue: [],
+        queueSize: 0
+      };
+
     case 'round.updated':
     case 'session.settings.changed':
       return payload?.state ? { ...state, ...payload.state } : state;
