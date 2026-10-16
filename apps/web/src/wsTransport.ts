@@ -530,6 +530,12 @@ export class WebSocketTransport {
             timestamp: message.timestamp ?? event.timestamp,
             payload: { state: this.sessionState, incremental: true, event }
           });
+          if (event.type === 'session.finished') {
+            window.setTimeout(() => {
+              clearStoredSession();
+              window.location.href = window.location.origin + '/';
+            }, 150);
+          }
           return;
         }
         return;
